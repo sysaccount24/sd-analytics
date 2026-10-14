@@ -252,6 +252,10 @@
       </div>
     </div>
     <div class="card">
+      <div class="card__h"><p class="card__t">📍 쇼룸 매장별 관심</p><p class="card__s">CTA로 매장 목록을 연 뒤 길찾기·전화를 누른 수</p></div>
+      <div class="tbl-wrap"><table class="tbl" id="storeTbl"></table></div>
+    </div>
+    <div class="card">
       <div class="card__h"><p class="card__t">📡 채널별 성과</p><p class="card__s">빨강 = 빠른 이탈 높음 · 주황 = CTA 클릭률 최고</p></div>
       <div class="tbl-wrap"><table class="tbl" id="chTbl"></table></div>
       <p class="note">빠른 이탈 = 3초 안에 첫 화면만 보고 나간 방문. 높으면 광고 문구와 페이지가 안 맞거나 실수 클릭이 많다는 신호예요. 방문 100 미만은 <span class="tag tag--low">표본 부족</span>으로 흐리게 표시해요.</p>
@@ -280,6 +284,10 @@
         <div class="card">
           <div class="card__h"><p class="card__t">클릭이 몰린 곳</p><p class="card__s">요소 단위</p></div>
           <div class="rank" id="hotRank"></div>
+        </div>
+        <div class="card">
+          <div class="card__h"><p class="card__t">📍 쇼룸 매장별 관심</p><p class="card__s">펼침 영역이라 표로 보여줘요</p></div>
+          <div class="tbl-wrap"><table class="tbl" id="storeTblHeat"></table></div>
         </div>
         <div class="card">
           <div class="card__h"><p class="card__t">헛클릭 (링크 없는 곳)</p></div>
@@ -318,7 +326,7 @@ var SOURCE_NAME = { naver:"네이버", gfa:"GFA", meta:"메타", kakao:"카카�
   sms:"문자", kakao_ch:"카카오채널", google:"구글", youtube:"유튜브", test:"테스트", "":"직접/기타" };
 var CLICK_NAME = { showroom_cta:"쇼룸 CTA 열기", showroom_directions:"매장 길찾기", showroom_call:"매장 전화/번호복사",
   buy_cta:"구매하러 가기", coupon:"쿠폰 받기" };
-var PREFIX_NAME = { lineup:"라인업", viewall:"전체보기", criteria_jump:"바로가기", product:"상품", module:"모듈" };
+var PREFIX_NAME = { showroom_directions:"매장 길찾기", showroom_call:"매장 전화", lineup:"라인업", viewall:"전체보기", criteria_jump:"바로가기", product:"상품", module:"모듈" };
 
 /* =========================================================
    상태
@@ -467,7 +475,7 @@ function renderDetail(){
   var c=camp(state.camp); if(!c) return;
   var rs=rows(c.id), s=sum(c,rs);
   $("pSub").textContent=c.name+" · "+label();
-  if(!s.n){ $("dIns").innerHTML=""; $("dKpis").innerHTML='<div class="state" style="grid-column:1/-1"><b>이 조건에 맞는 방문이 아직 없어요.</b><br>기간·채널·기기 필터를 넓혀보세요.</div>'; $("funnel").innerHTML=""; $("rank").innerHTML=""; $("chTbl").innerHTML=""; return; }
+  if(!s.n){ $("dIns").innerHTML=""; $("dKpis").innerHTML='<div class="state" style="grid-column:1/-1"><b>이 조건에 맞는 방문이 아직 없어요.</b><br>기간·채널·기기 필터를 넓혀보세요.</div>'; $("funnel").innerHTML=""; $("rank").innerHTML=""; $("chTbl").innerHTML=""; $("storeTbl").innerHTML=""; return; }
   var w={i:1,d:-1}; for(var i=1;i<s.reach.length;i++){var p=s.reach[i-1],d=p?(p-s.reach[i])/p:0; if(d>w.d)w={i:i,d:d};}
   var all=rows(c.id,{ignoreCh:true}), srcs={}; all.forEach(function(x){srcs[x.utm_source]=1;});
   var chS=Object.keys(srcs).map(function(k){return {k:k,name:chName(k),s:sum(c,all.filter(function(x){return x.utm_source===k;}))};}).sort(function(a,b){return b.s.n-a.s.n;});
@@ -485,6 +493,7 @@ function renderDetail(){
     row.innerHTML='<span class="fr__name">'+esc(sec[1])+'</span><span class="fr__track"><span class="fr__bar" style="width:'+r*100+'%"></span></span><span class="fr__val"><b>'+pct(r,0)+'</b>'+(i?'<span class="drop">−'+pct(d,0)+'</span>':'')+'</span>';
     bindTip(row,'<b>'+esc(sec[1])+'</b><br>도달 '+fmt(v)+'회 ('+pct(r)+')'+(i?'<br>직전 대비 이탈 '+pct(d):'')); f.appendChild(row);});
   rank($("rank"),c,s,Object.keys(s.cN),10);
+  renderStores($("storeTbl"),c,s);
   var t='<thead><tr><th class="l">채널</th><th>방문</th><th>빠른 이탈</th><th>참여율</th><th>평균 체류</th><th>끝까지 도달</th><th>CTA 클릭률</th></tr></thead><tbody>';
   chS.forEach(function(o){var x=o.s,low=x.n<LOW_N;
     t+='<tr'+(low?' class="is-low"':'')+'><td class="l"><b>'+esc(o.name)+'</b>'+(low?' <span class="tag tag--low">표본 부족</span>':'')+'</td><td>'+fmt(x.n)+'</td>'+
@@ -501,6 +510,24 @@ function rank(box,c,s,keys,limit){
     row.innerHTML='<span class="rr__no">'+(i+1)+'</span><span><span class="rr__label">'+esc(lab(c,k))+(d?'<span class="tag tag--dead">헛클릭</span>':'')+'</span><span class="rr__track"><span class="rr__bar" style="width:'+s.cN[k]/max*100+'%"></span></span></span>'+
       '<span class="rr__n">'+fmt(s.cN[k])+'</span><span class="rr__r">'+pct(s.n?s.cS[k]/s.n:0)+'</span>';
     bindTip(row,'<b>'+esc(lab(c,k))+'</b><br>클릭 '+fmt(s.cN[k])+'회 · 클릭한 방문 '+fmt(s.cS[k])+'회'+(d?'<br>링크가 없는 곳을 누름':'')); box.appendChild(row);});
+}
+
+/* --- 쇼룸 매장별 관심 --- */
+function renderStores(tbl,c,s){
+  if(!tbl) return;
+  var st={};
+  Object.keys(s.cN).forEach(function(k){
+    var m=k.match(/^showroom_(directions|call)(?::(.+))?$/); if(!m) return;
+    var name=m[2]||"(매장 미상)"; st[name]=st[name]||{dir:0,call:0,sess:0};
+    if(m[1]==="directions") st[name].dir+=s.cN[k]; else st[name].call+=s.cN[k];
+    st[name].sess+=s.cS[k];
+  });
+  var names=Object.keys(st).sort(function(a,b){return (st[b].dir+st[b].call)-(st[a].dir+st[a].call);});
+  if(!names.length){ tbl.innerHTML='<tbody><tr><td class="l" style="color:var(--ink-3)">아직 매장 길찾기·전화 클릭이 없어요.</td></tr></tbody>'; return; }
+  var max=st[names[0]].dir+st[names[0]].call;
+  tbl.innerHTML='<thead><tr><th class="l">매장</th><th>길찾기</th><th>전화</th><th>합계</th></tr></thead><tbody>'+
+    names.map(function(n,i){var x=st[n],t=x.dir+x.call;
+      return '<tr><td class="l"><b>'+esc(n)+'</b></td><td>'+fmt(x.dir)+'</td><td>'+fmt(x.call)+'</td><td'+(i===0?' class="best"':'')+'>'+fmt(t)+'</td></tr>';}).join("")+'</tbody>';
 }
 
 /* --- 광고 소재별 성과 --- */
@@ -558,18 +585,20 @@ function renderHeat(){
     var H=dev==="pc"?1500:1700, n=Math.max(1,c.sections.length); shot.style.height=H+"px";
     (c.sections.length?c.sections:[["page","페이지"]]).forEach(function(sec,i){var d=el("div","shot__sec","");d.style.height=(H/n)+"px";d.style.background=i%2?"#fafafb":"#f1f2f4";d.innerHTML="<span>"+esc(sec[1])+"</span>";shot.appendChild(d);});
     draw(H);
-    $("shotNote").textContent="캡처 이미지가 없어 섹션을 같은 높이로 나눠 보여줘요. campaigns 탭에 "+(dev==="pc"?"capture_pc":"capture_mobile")+" 주소를 넣으면 실제 위치에 찍혀요.";
+    $("shotNote").textContent="⚠️ 시트에서 캡처 주소를 못 받았어요. campaigns 탭의 "+(dev==="pc"?"capture_pc":"capture_mobile")+" 칸에 주소를 넣고 ↻ 새로고침을 눌러주세요.";
   }
   if(cap){
     shot.style.height="auto";
     var bg=new Image(); bg.className="bg"; bg.alt="페이지 캡처";
     bg.onload=function(){ draw(bg.getBoundingClientRect().height); $("shotNote").textContent="기획페이지 블록 캡처 기준 · 펼치는 영역(쇼룸 목록) 클릭은 버튼 아래에 모아서 찍혀요."; };
-    bg.onerror=function(){ shot.innerHTML=""; fallback(); };
+    bg.onerror=function(){ shot.innerHTML=""; fallback();
+      $("shotNote").innerHTML='⚠️ 캡처 이미지를 불러오지 못했어요. 주소를 브라우저에서 직접 열어 확인해주세요.<br><span style="word-break:break-all">'+esc(cap)+'</span>'; };
     shot.appendChild(bg); bg.src=cap;
   } else fallback();
   var keys=Object.keys(s.cN);
   rank($("hotRank"),c,s,keys.filter(function(k){return !dead(c,k);}),6);
   rank($("deadRank"),c,s,keys.filter(function(k){return dead(c,k);}),5);
+  renderStores($("storeTblHeat"),c,s);
   var top=keys.filter(function(k){return dead(c,k);}).sort(function(a,b){return s.cN[b]-s.cN[a];})[0];
   $("deadNote").innerHTML=top?'<b>'+esc(lab(c,top))+'</b>을 누른 방문이 '+pct(s.n?s.cS[top]/s.n:0)+'예요. 고객이 더 보고 싶어 하는 자리라는 신호라서, 관련 상품 링크를 걸거나 눌렀을 때 반응(확대·이동)을 주는 걸 검토해볼 만해요.':'헛클릭이 아직 없어요.';
 }
