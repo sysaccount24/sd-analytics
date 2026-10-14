@@ -104,6 +104,10 @@
   .fr__val b{font-weight:700;}
   .drop{font-size:11.5px;color:var(--ink-3);margin-left:6px;}
   .fr.is-drop .drop{color:var(--red);font-weight:700;}
+  .fr__split{grid-column:2 / 4;font-size:11.5px;color:var(--ink-3);margin-top:-6px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
+  .fr__split{column-gap:10px;row-gap:2px;} .fr__split > span{white-space:nowrap;display:inline-flex;align-items:center;gap:4px;}
+  .fr__split .dot{width:7px;height:7px;border-radius:999px;display:inline-block;}
+  .dot--out{background:var(--green);} .dot--plain{background:var(--red);}
 
   /* 순위 */
   .rank-head,.rr{display:grid;grid-template-columns:22px 1fr 64px 58px;gap:10px;align-items:center;}
@@ -242,7 +246,7 @@
     <div class="kpis" id="dKpis"></div>
     <div class="g2">
       <div class="card">
-        <div class="card__h"><p class="card__t">📉 섹션 도달 퍼널</p><p class="card__s">전체 방문 대비 · 직전 섹션 대비 이탈</p></div>
+        <div class="card__h"><p class="card__t">📉 섹션 도달 퍼널</p><p class="card__s">전체 방문 대비 · 직전 섹션 대비 이탈 · 이탈은 상품 이동/그냥 이탈로 구분</p></div>
         <div class="funnel" id="funnel"></div>
       </div>
       <div class="card">
@@ -320,6 +324,7 @@ var API_URL = "https://script.google.com/macros/s/AKfycbwByToGxUCI-nNshTPjdDqLtp
 var LOW_N = 100;                          // 이 방문 수 미만은 '표본 부족'
 var FAST_SEC = 3;                         // 빠른 이탈 기준(초)
 var ENGAGED_SEC = 10;                     // 참여 기준(초)
+var OUT_PREFIX = ["lineup:", "viewall:", "product:", "buy_cta", "module:"];   // 누르면 다른 페이지로 이동하는 클릭 (= 상품으로 이동한 이탈)
 
 /* 표시 이름 사전 */
 var SOURCE_NAME = { naver:"네이버", gfa:"GFA", meta:"메타", kakao:"카카오", instagram:"인스타그램", blog:"블로그",
@@ -409,14 +414,20 @@ function rows(id,o){ o=o||{}; return SESSIONS.filter(function(s){
 
 function sum(c,rs){
   var n=rs.length,eng=0,dur=0,fast=0,cta=0,reach=c.sections.map(function(){return 0;}),cN={},cS={};
+  var exitOut=c.sections.map(function(){return 0;}), exitPlain=c.sections.map(function(){return 0;});   // [i] = i번째 섹션에서 멈춘 방문
   var idx={}; c.sections.forEach(function(x,i){ idx[x[0]]=i; });
   rs.forEach(function(s){
     if(s.engaged)eng++; if(s.fast_exit)fast++; dur+=s.duration;
     s.sections.forEach(function(sec){ if(idx[sec]!=null) reach[idx[sec]]++; });
     var seen={}; s.clicks.forEach(function(k){ cN[k]=(cN[k]||0)+1; if(!seen[k]){ cS[k]=(cS[k]||0)+1; seen[k]=1; } });
     if(c.cta && seen[c.cta]) cta++;
+    var deep=-1; s.sections.forEach(function(sec){ if(idx[sec]!=null && idx[sec]>deep) deep=idx[sec]; });
+    if(deep>-1 && deep<c.sections.length-1){
+      var out=Object.keys(seen).some(function(k){ return OUT_PREFIX.some(function(p){ return k.indexOf(p)===0; }); });
+      if(out) exitOut[deep]++; else exitPlain[deep]++;
+    }
   });
-  return {n:n,eng:n?eng/n:0,dur:n?dur/n:0,fast:n?fast/n:0,reach:reach,end:n&&reach.length?reach[reach.length-1]/n:0,cta:n?cta/n:0,cN:cN,cS:cS};
+  return {n:n,eng:n?eng/n:0,dur:n?dur/n:0,fast:n?fast/n:0,reach:reach,end:n&&reach.length?reach[reach.length-1]/n:0,cta:n?cta/n:0,cN:cN,cS:cS,exitOut:exitOut,exitPlain:exitPlain};
 }
 function pct(v,d){ return (v*100).toFixed(d==null?1:d)+"%"; }
 function fmt(n){ return Math.round(n).toLocaleString("ko-KR"); }
@@ -476,13 +487,13 @@ function renderDetail(){
   var rs=rows(c.id), s=sum(c,rs);
   $("pSub").textContent=c.name+" · "+label();
   if(!s.n){ $("dIns").innerHTML=""; $("dKpis").innerHTML='<div class="state" style="grid-column:1/-1"><b>이 조건에 맞는 방문이 아직 없어요.</b><br>기간·채널·기기 필터를 넓혀보세요.</div>'; $("funnel").innerHTML=""; $("rank").innerHTML=""; $("chTbl").innerHTML=""; $("storeTbl").innerHTML=""; return; }
-  var w={i:1,d:-1}; for(var i=1;i<s.reach.length;i++){var p=s.reach[i-1],d=p?(p-s.reach[i])/p:0; if(d>w.d)w={i:i,d:d};}
+  var w={i:1,d:-1,all:0}; for(var i=1;i<s.reach.length;i++){var p=s.reach[i-1],d=p?s.exitPlain[i-1]/p:0; if(d>w.d)w={i:i,d:d,all:p?(p-s.reach[i])/p:0,out:s.exitOut[i-1],plain:s.exitPlain[i-1]};}
   var all=rows(c.id,{ignoreCh:true}), srcs={}; all.forEach(function(x){srcs[x.utm_source]=1;});
   var chS=Object.keys(srcs).map(function(k){return {k:k,name:chName(k),s:sum(c,all.filter(function(x){return x.utm_source===k;}))};}).sort(function(a,b){return b.s.n-a.s.n;});
   var ok=chS.filter(function(o){return o.s.n>=LOW_N&&o.k!=="";});
   var bc=ok.slice().sort(function(a,b){return b.s.cta-a.s.cta;})[0], bf=ok.slice().sort(function(a,b){return b.s.fast-a.s.fast;})[0];
   $("dIns").innerHTML=
-    (c.sections.length>1?ins("📉","가장 많이 빠지는 구간",c.sections[w.i-1][1]+" → "+c.sections[w.i][1],"직전 섹션 대비 "+pct(Math.max(0,w.d),0)+" 이탈",true):ins("📉","섹션 정보 없음","campaigns 탭의 sections 칸을 채워주세요",""))+
+    (c.sections.length>1?ins("📉","가장 많이 빠지는 구간 (상품 이동 제외)",c.sections[w.i-1][1]+" → "+c.sections[w.i][1],"그냥 이탈 "+pct(Math.max(0,w.d),0)+" · 전체 이탈 "+pct(Math.max(0,w.all),0)+" 중 상품 이동 "+fmt(w.out||0)+"명",true):ins("📉","섹션 정보 없음","campaigns 탭의 sections 칸을 채워주세요",""))+
     ins("🏆","CTA 클릭률 최고 광고 채널",bc?bc.name:"판단 보류",bc?pct(bc.s.cta)+" · 방문 "+fmt(bc.s.n):"채널당 방문 "+LOW_N+"회 이상부터 비교해요")+
     ins("⚠️","빠른 이탈 최고 광고 채널",bf?bf.name:"판단 보류",bf?pct(bf.s.fast)+"가 "+FAST_SEC+"초 안에 이탈 → 소재 점검":"",true);
   $("dKpis").innerHTML=kpi(fmt(s.n),"회","방문")+kpi(pct(s.fast,0),"","빠른 이탈",FAST_SEC+"초 안에 이탈",s.fast>=0.15)+kpi(pct(s.eng,0),"","참여율",ENGAGED_SEC+"초 이상")+
@@ -490,8 +501,10 @@ function renderDetail(){
   var f=$("funnel"); f.innerHTML="";
   c.sections.forEach(function(sec,i){var v=s.reach[i],r=s.n?v/s.n:0,p=i?s.reach[i-1]:v,d=p?(p-v)/p:0,row=document.createElement("div");
     row.className="fr"+(i===w.i?" is-drop":"");
-    row.innerHTML='<span class="fr__name">'+esc(sec[1])+'</span><span class="fr__track"><span class="fr__bar" style="width:'+r*100+'%"></span></span><span class="fr__val"><b>'+pct(r,0)+'</b>'+(i?'<span class="drop">−'+pct(d,0)+'</span>':'')+'</span>';
-    bindTip(row,'<b>'+esc(sec[1])+'</b><br>도달 '+fmt(v)+'회 ('+pct(r)+')'+(i?'<br>직전 대비 이탈 '+pct(d):'')); f.appendChild(row);});
+    var eo=i?s.exitOut[i-1]:0, ep=i?s.exitPlain[i-1]:0;
+    row.innerHTML='<span class="fr__name">'+esc(sec[1])+'</span><span class="fr__track"><span class="fr__bar" style="width:'+r*100+'%"></span></span><span class="fr__val"><b>'+pct(r,0)+'</b>'+(i?'<span class="drop">−'+pct(d,0)+'</span>':'')+'</span>'+
+      (i&&(eo+ep)?'<span class="fr__split"><span><i class="dot dot--out"></i>상품으로 이동 '+fmt(eo)+'명</span><span><i class="dot dot--plain"></i>그냥 이탈 '+fmt(ep)+'명</span></span>':'');
+    bindTip(row,'<b>'+esc(sec[1])+'</b><br>도달 '+fmt(v)+'회 ('+pct(r)+')'+(i?'<br>직전 섹션에서 멈춘 방문 '+fmt(eo+ep)+'명<br>· 상품으로 이동 '+fmt(eo)+'명 (좋은 이탈)<br>· 그냥 이탈 '+fmt(ep)+'명':'')); f.appendChild(row);});
   rank($("rank"),c,s,Object.keys(s.cN),10);
   renderStores($("storeTbl"),c,s);
   var t='<thead><tr><th class="l">채널</th><th>방문</th><th>빠른 이탈</th><th>참여율</th><th>평균 체류</th><th>끝까지 도달</th><th>CTA 클릭률</th></tr></thead><tbody>';
