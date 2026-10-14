@@ -15,6 +15,11 @@
  *   data-sd-extra          : 눌러야 펼쳐지는 영역(드롭다운 등). 캡처 이미지에는 접힌 상태로 찍히므로
  *                            좌표 계산에서 이 높이를 빼고, 안쪽 클릭은 펼쳐지는 위치(맨 위)에 찍음
  *
+ * 내 방문 제외
+ *   페이지 주소 끝에 ?sdtrack=off 를 붙여 한 번 열면, 그 브라우저는 이후 계속 기록에서 빠짐
+ *   (같은 사이트의 모든 기획페이지에 적용). 다시 기록하려면 ?sdtrack=on
+ *   브라우저·기기마다 따로 저장되므로 폰과 PC에서 각각 한 번씩 해야 함. 시크릿 창은 매번 초기화.
+ *
  * 수집 방식
  *   방문 1회 = 1행. 탭을 벗어나거나 페이지를 떠날 때 sendBeacon으로 전송.
  *   다시 돌아왔다 떠나면 seq를 올려 한 번 더 보내고, 대시보드는 세션별 마지막 seq만 씀.
@@ -27,6 +32,32 @@
   var ENDPOINT = me.getAttribute("data-endpoint");
   var KEY = me.getAttribute("data-key") || "";
   if (!CAMPAIGN || !ENDPOINT || !navigator.sendBeacon) return;
+
+  /* ---------- 내 방문 제외 (?sdtrack=off / on) ---------- */
+  var flag = new URLSearchParams(location.search).get("sdtrack");
+  var optedOut = false;
+  try {
+    if (flag === "off") localStorage.setItem("sd_optout", "1");
+    if (flag === "on") localStorage.removeItem("sd_optout");
+    optedOut = localStorage.getItem("sd_optout") === "1";
+  } catch (e) {}
+  if (flag === "off" || flag === "on") notice(flag === "off"
+    ? "이 브라우저의 방문은 이제 분석 기록에서 제외돼요."
+    : "이 브라우저의 방문을 다시 분석에 기록해요.");
+  if (optedOut) { window.sdTrack = { peek: function () { return { optedOut: true }; } }; return; }
+
+  function notice(msg) {
+    function show() {
+      var d = document.createElement("div");
+      d.textContent = msg;
+      d.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;" +
+        "background:#1c1a17;color:#fff;font-size:14px;line-height:1.4;padding:12px 18px;border-radius:999px;" +
+        "box-shadow:0 4px 16px rgba(0,0,0,.2);max-width:90vw;text-align:center;";
+      document.body.appendChild(d);
+      setTimeout(function () { d.remove(); }, 3500);
+    }
+    if (document.body) show(); else document.addEventListener("DOMContentLoaded", show);
+  }
 
   var MAX_POINTS = 150;
   var DEAD_SELECTOR = me.getAttribute("data-dead-selector") || "img, picture, [role=img], .sdp-img, [data-dead]";
