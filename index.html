@@ -342,9 +342,10 @@ var API_URL = "https://script.google.com/macros/s/AKfycbwByToGxUCI-nNshTPjdDqLtp
 var LOW_N = 100;                          // 이 방문 수 미만은 '표본 부족'
 var FAST_SEC = 3;                         // 빠른 이탈 기준(초)
 var CREATIVE_DIR = "creatives/";            // 광고 소재 썸네일 폴더
-// 찾는 순서: creatives/광고캠페인/소재_매체형식.jpg → creatives/광고캠페인/소재.jpg  (.jpg 없으면 .png)
-//   예) creatives/project_tofu/know1.jpg       ← 기본 (모든 채널·형식에 공통)
-//       creatives/project_tofu/know1_da.jpg    ← DA처럼 이미지가 다른 형식만 따로
+// 찾는 순서: 소재_채널_지면 → 소재_지면 → 소재  (.jpg 없으면 .png)
+//   예) creatives/project_tofu/know1.jpg                 ← 기본 (모든 채널·지면 공통)
+//       creatives/project_tofu/know1_bizboard.jpg        ← 그 지면은 어느 채널이든 이미지가 다를 때
+//       creatives/project_tofu/know1_kakao_video.jpg     ← 특정 채널의 특정 지면만 다를 때
 var ENGAGED_SEC = 10;                     // 참여 기준(초)
 var OUT_PREFIX = ["lineup:", "viewall:", "product:", "buy_cta", "module:"];   // 누르면 다른 페이지로 이동하는 클릭 (= 상품으로 이동한 이탈)
 
@@ -603,14 +604,16 @@ function renderAds(){
     return G==="content"?cp+"|"+ct : G==="medium"?md : G==="source"?r.utm_source : r.utm_source+"|"+md+"|"+cp+"|"+ct; }
   var g={}; rs.forEach(function(r){var k=keyOf(r);(g[k]=g[k]||[]).push(r);});
   function uniq(a,f){var o={};a.forEach(function(r){o[f(r)]=1;});return Object.keys(o);}
-  function tries(cp,ct,md){ if(ct==="(없음)") return []; var dir=CREATIVE_DIR+(cp!=="(없음)"?cp+"/":""), t=[];
-    if(md) t.push(dir+ct+"_"+md+".jpg",dir+ct+"_"+md+".png"); t.push(dir+ct+".jpg",dir+ct+".png"); return t; }
+  // 찾는 순서: 소재_채널_지면 → 소재_지면 → 소재  (.jpg → .png)
+  function tries(cp,ct,md,src){ if(ct==="(없음)") return []; var dir=CREATIVE_DIR+(cp!=="(없음)"?cp+"/":""), t=[];
+    function add(n){ t.push(dir+n+".jpg",dir+n+".png"); }
+    if(md&&src) add(ct+"_"+src+"_"+md); if(md) add(ct+"_"+md); add(ct); return t; }
   var list=Object.keys(g).map(function(k){var p=k.split("|"),grp=g[k],o={s:sum(c,grp),src:"",img:null};
     if(G==="content"){ var srcs=uniq(grp,function(r){return r.utm_source;}), mds=uniq(grp,function(r){return r.utm_medium||"";}).filter(Boolean);
-      o.name=p[1]; o.sub=p[0]+" · 채널 "+srcs.length+" · 지면 "+(mds.length||"-"); o.img=tries(p[0],p[1],state.md!=="all"?state.md:""); }
+      o.name=p[1]; o.sub=p[0]+" · 채널 "+srcs.length+" · 지면 "+(mds.length||"-"); o.img=tries(p[0],p[1],state.md!=="all"?state.md:"",state.ch!=="all"?state.ch:""); }
     else if(G==="medium"){ o.name=p[0]?mdName(p[0]):"(지면 없음)"; o.sub=p[0]||"utm_medium 없음"; o.icon=true; }
     else if(G==="source"){ o.name=chName(p[0]); o.sub=p[0]||"utm_source 없음"; o.src=p[0]; o.icon=true; }
-    else { o.name=p[3]; o.src=p[0]; o.sub=chName(p[0])+(p[1]?" · "+mdName(p[1]):"")+" · "+p[2]; o.img=tries(p[2],p[3],p[1]); }
+    else { o.name=p[3]; o.src=p[0]; o.sub=chName(p[0])+(p[1]?" · "+mdName(p[1]):"")+" · "+p[2]; o.img=tries(p[2],p[3],p[1],p[0]); }
     return o;});
   if(!list.length){ $("aIns").innerHTML=""; $("adTbl").innerHTML='<tbody><tr><td class="l">이 조건에 맞는 방문이 아직 없어요.</td></tr></tbody>'; return; }
   var ok=list.filter(function(o){return o.s.n>=LOW_N && !(G==="source"&&o.src==="");});
