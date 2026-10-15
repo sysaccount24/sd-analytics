@@ -132,6 +132,8 @@
     var r = rootEl().getBoundingClientRect();
     var inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
     if (!inside) return;
+    // 기획페이지 위에 겹쳐 떠 있는 사이트 고정 헤더·팝업 등을 누른 건 제외 (실제로 누른 요소가 블록 안에 있을 때만 기록)
+    if (!rootEl().contains(t)) return;
     var key = "";
     var tracked = t.closest("[data-track]");
     if (tracked) key = tracked.getAttribute("data-track");
