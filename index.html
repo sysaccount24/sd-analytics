@@ -75,6 +75,8 @@
   .seg{display:flex;height:42px;border:1px solid #d9dbe0;border-radius:10px;overflow:hidden;background:#fff;}
   .seg button{border:0;background:transparent;padding:0 16px;cursor:pointer;color:var(--ink-2);}
   .seg button+button{border-left:1px solid #d9dbe0;}
+  .card__h:has(.seg){align-items:center;flex-wrap:wrap;margin-bottom:8px;}
+  .seg--sm{height:34px;} .seg--sm button{padding:0 12px;font-size:13px;}
   .seg button[aria-pressed="true"]{background:var(--or-soft);color:var(--or-dark);font-weight:700;}
 
   /* KPI 카드 (CS웹: 큰 숫자 + 아래 라벨) */
@@ -231,6 +233,7 @@
       <div class="f"><label for="fFrom">시작일</label><input class="inp" type="date" id="fFrom"></div>
       <div class="f"><label for="fTo">종료일</label><input class="inp" type="date" id="fTo"></div>
       <div class="f"><label for="fCh">채널</label><select class="inp" id="fCh"></select></div>
+      <div class="f"><label for="fMd">지면</label><select class="inp" id="fMd"></select></div>
       <div class="f"><label for="fAc">광고 캠페인</label><select class="inp" id="fAc"></select></div>
       <div class="f"><label for="fCt">소재</label><select class="inp" id="fCt"></select></div>
       <div class="f"><label>테스트 방문</label>
@@ -283,7 +286,9 @@
   <section class="screen stack" id="s-ads" hidden>
     <div class="insights" id="aIns"></div>
     <div class="card">
-      <div class="card__h"><p class="card__t">🎯 광고 캠페인 · 소재별 성과</p><p class="card__s">utm_campaign / utm_content 기준 · 정렬: 열 제목 클릭</p></div>
+      <div class="card__h"><p class="card__t">🎯 광고 성과 비교</p>
+        <div class="seg seg--sm" id="fGroup"><button data-v="content" aria-pressed="true">소재별</button><button data-v="medium" aria-pressed="false">지면별</button><button data-v="source" aria-pressed="false">채널별</button><button data-v="all" aria-pressed="false">전체 조합</button></div></div>
+      <p class="card__s" id="adHint" style="margin:-4px 0 10px"></p>
       <div class="tbl-wrap"><table class="tbl" id="adTbl"></table></div>
       <p class="note">끝까지 도달·CTA 클릭률이 높은 소재 = 이 페이지와 메시지가 맞는 소재예요. 빠른 이탈이 높은 소재는 문구·이미지가 페이지 첫 화면과 맞는지 먼저 확인해보세요. 방문 100 미만 소재는 판단을 보류하세요.</p>
     </div>
@@ -336,13 +341,18 @@
 var API_URL = "https://script.google.com/macros/s/AKfycbwByToGxUCI-nNshTPjdDqLtpAj1Un4mLil4n76EkRnSM5LkpqZUAf7aquHGXvAOlbV/exec";   // 예: https://script.google.com/macros/s/XXXX/exec
 var LOW_N = 100;                          // 이 방문 수 미만은 '표본 부족'
 var FAST_SEC = 3;                         // 빠른 이탈 기준(초)
-var CREATIVE_DIR = "creatives/";            // 광고 소재 썸네일 폴더 (파일명 = utm_content 값 + .jpg 또는 .png)
+var CREATIVE_DIR = "creatives/";            // 광고 소재 썸네일 폴더
+// 찾는 순서: creatives/광고캠페인/소재_매체형식.jpg → creatives/광고캠페인/소재.jpg  (.jpg 없으면 .png)
+//   예) creatives/project_tofu/know1.jpg       ← 기본 (모든 채널·형식에 공통)
+//       creatives/project_tofu/know1_da.jpg    ← DA처럼 이미지가 다른 형식만 따로
 var ENGAGED_SEC = 10;                     // 참여 기준(초)
 var OUT_PREFIX = ["lineup:", "viewall:", "product:", "buy_cta", "module:"];   // 누르면 다른 페이지로 이동하는 클릭 (= 상품으로 이동한 이탈)
 
 /* 표시 이름 사전 */
-var SOURCE_NAME = { naver:"네이버", gfa:"GFA", meta:"메타", kakao:"카카오", instagram:"인스타그램", blog:"블로그",
+var SOURCE_NAME = { naver:"네이버", gfa:"GFA", naver_gfa:"네이버 GFA", naver_sa:"네이버 검색광고", meta:"메타", kakao:"카카오", instagram:"인스타그램", blog:"블로그",
   sms:"문자", kakao_ch:"카카오채널", google:"구글", youtube:"유튜브", test:"테스트", "":"직접/기타" };
+var MEDIUM_NAME = { feed:"피드", da:"DA", video:"영상", powerlink:"파워링크", bizboard:"비즈보드", shoppingpromotion:"쇼핑프로모션", display:"디스플레이", cpc:"검색", paid_social:"소셜", organic:"오가닉", message:"메시지" };
+function mdName(k){ return MEDIUM_NAME[k]!=null ? MEDIUM_NAME[k] : k; }
 var CLICK_NAME = { showroom_cta:"쇼룸 CTA 열기", showroom_directions:"매장 길찾기", showroom_call:"매장 전화/번호복사",
   buy_cta:"구매하러 가기", coupon:"쿠폰 받기" };
 var PREFIX_NAME = { showroom_directions:"매장 길찾기", showroom_call:"매장 전화", lineup:"라인업", viewall:"전체보기", criteria_jump:"바로가기", product:"상품", module:"모듈" };
@@ -352,7 +362,7 @@ var PREFIX_NAME = { showroom_directions:"매장 길찾기", showroom_call:"매�
    ========================================================= */
 function ymd(d){ var k=new Date(d.getTime()+9*36e5); return k.toISOString().slice(0,10); }
 var NOW = new Date();
-var state = { screen:"list", camp:"", from:ymd(new Date(NOW.getTime()-13*864e5)), to:ymd(NOW), ch:"all", ac:"all", ct:"all", dev:"all", test:false };
+var state = { screen:"list", camp:"", from:ymd(new Date(NOW.getTime()-13*864e5)), to:ymd(NOW), ch:"all", md:"all", ac:"all", ct:"all", adGroup:"content", dev:"all", test:false };
 var CAMPAIGNS = [], SESSIONS = [], loadedRange = "";
 var $ = function(id){ return document.getElementById(id); };
 function store(k,v){ try{ if(v===undefined) return localStorage.getItem(k); if(v===null) localStorage.removeItem(k); else localStorage.setItem(k,v);}catch(e){ return null; } }
@@ -381,7 +391,7 @@ function parseSession(r){
   var pts=[]; try{ pts=JSON.parse(r.click_points||"[]"); }catch(e){}
   var secs=String(r.sections||"").split("|").filter(Boolean), dur=+r.duration_sec||0;
   return { campaign_id:r.campaign_id, started_at:new Date(r.started_at), device:r.device||"mobile",
-    utm_source:String(r.utm_source||"").toLowerCase(), utm_campaign:r.utm_campaign||"", utm_content:r.utm_content||"",
+    utm_source:String(r.utm_source||"").toLowerCase(), utm_medium:String(r.utm_medium||"").toLowerCase(), utm_campaign:r.utm_campaign||"", utm_content:r.utm_content||"",
     duration:dur, engaged:dur>=ENGAGED_SEC, fast_exit:dur<=FAST_SEC && secs.length<=1,
     sections:secs, clicks:clicks, points:pts };
 }
@@ -433,7 +443,7 @@ function inRange(s){ var f=new Date(state.from+"T00:00:00+09:00"), t=new Date(st
 function rows(id,o){ o=o||{}; return SESSIONS.filter(function(s){
   return s.campaign_id===id && inRange(s) && (state.test || s.utm_source!=="test") &&
     (o.ignoreCh||state.ch==="all"||s.utm_source===state.ch) &&
-    (o.ignoreAd||state.ac==="all"||(s.utm_campaign||"")===state.ac) && (o.ignoreAd||state.ct==="all"||(s.utm_content||"")===state.ct) && (o.ignoreDev||state.dev==="all"||s.device===state.dev); }); }
+    (o.ignoreAd||state.md==="all"||(s.utm_medium||"")===state.md) && (o.ignoreAd||state.ac==="all"||(s.utm_campaign||"")===state.ac) && (o.ignoreAd||state.ct==="all"||(s.utm_content||"")===state.ct) && (o.ignoreDev||state.dev==="all"||s.device===state.dev); }); }
 
 function sum(c,rs){
   var n=rs.length,eng=0,dur=0,fast=0,cta=0,reach=c.sections.map(function(){return 0;}),cN={},cS={};
@@ -478,17 +488,19 @@ function kpi(v,u,k,d,alert){return '<div class="kpi'+(alert?' kpi--alert':'')+'"
 function el(t,c,x){var e=document.createElement(t);e.className=c;e.textContent=x;return e;}
 // 광고 캠페인·소재 드롭다운: 지금 고른 기획페이지·채널(·광고 캠페인)에 실제로 들어온 값만 보여줌
 function buildAdOpts(){
-  function opts(id,key,base,allLabel,cur){
+  function opts(id,key,base,allLabel,cur,nm){
     var cnt={}; base.forEach(function(r){var v=r[key]||""; cnt[v]=(cnt[v]||0)+1;});
     var ks=Object.keys(cnt).sort(function(a,b){return cnt[b]-cnt[a];});
-    $(id).innerHTML='<option value="all">'+allLabel+'</option>'+ks.map(function(k){return '<option value="'+esc(k)+'">'+esc(k||"(없음)")+' ('+fmt(cnt[k])+')</option>';}).join("");
+    $(id).innerHTML='<option value="all">'+allLabel+'</option>'+ks.map(function(k){return '<option value="'+esc(k)+'">'+esc(k?(nm?nm(k):k):"(없음)")+' ('+fmt(cnt[k])+')</option>';}).join("");
     var v=(cur==="all"||cnt[cur]!=null)?cur:"all"; $(id).value=v; return v;
   }
   var base=SESSIONS.filter(function(r){return r.campaign_id===state.camp && inRange(r) && (state.test||r.utm_source!=="test") && (state.ch==="all"||r.utm_source===state.ch);});
+  state.md=opts("fMd","utm_medium",base,"전체 지면",state.md,mdName);
+  base=base.filter(function(r){return state.md==="all"||(r.utm_medium||"")===state.md;});
   state.ac=opts("fAc","utm_campaign",base,"전체 캠페인",state.ac);
   state.ct=opts("fCt","utm_content",base.filter(function(r){return state.ac==="all"||(r.utm_campaign||"")===state.ac;}),"전체 소재",state.ct);
 }
-function label(){return state.from.replace(/-/g,".")+" ~ "+state.to.replace(/-/g,".")+" · "+(state.ch==="all"?"전체 채널":chName(state.ch))+(state.ac!=="all"?" · "+(state.ac||"(없음)"):"")+(state.ct!=="all"?" · "+(state.ct||"(없음)"):"")+" · "+({all:"전체 기기",mobile:"모바일",pc:"PC"})[state.dev];}
+function label(){return state.from.replace(/-/g,".")+" ~ "+state.to.replace(/-/g,".")+" · "+(state.ch==="all"?"전체 채널":chName(state.ch))+(state.md!=="all"?" · "+(state.md?mdName(state.md):"(없음)"):"")+(state.ac!=="all"?" · "+(state.ac||"(없음)"):"")+(state.ct!=="all"?" · "+(state.ct||"(없음)"):"")+" · "+({all:"전체 기기",mobile:"모바일",pc:"PC"})[state.dev];}
 function empty(box,msg){ box.innerHTML='<div class="state">'+msg+'</div>'; }
 
 var SCREEN_HTML = {};
@@ -582,33 +594,48 @@ function renderStores(tbl,c,s){
 var adSort={k:"n",dir:-1};
 function renderAds(){
   var c=camp(state.camp); if(!c) return;
-  var rs=rows(c.id);
+  var rs=rows(c.id), G=state.adGroup;
   $("pSub").textContent=c.name+" · "+label();
-  var g={}; rs.forEach(function(r){var key=r.utm_source+"|"+(r.utm_campaign||"(없음)")+"|"+(r.utm_content||"(없음)");(g[key]=g[key]||[]).push(r);});
-  var list=Object.keys(g).map(function(k){var p=k.split("|");return {src:p[0],camp:p[1],cont:p[2],s:sum(c,g[k])};});
+  var WORD={content:"소재",medium:"지면",source:"채널",all:"조합"}[G];
+  $("adHint").textContent={content:"채널·지면을 합쳐서 소재끼리 비교해요",medium:"소재를 합쳐서 지면(feed·da·video…)끼리 비교해요",
+    source:"소재·지면을 합쳐서 채널끼리 비교해요",all:"채널 × 지면 × 소재 조합을 하나씩 따로 봐요"}[G]+" · 정렬: 열 제목 클릭";
+  function keyOf(r){ var cp=r.utm_campaign||"(없음)", ct=r.utm_content||"(없음)", md=r.utm_medium||"";
+    return G==="content"?cp+"|"+ct : G==="medium"?md : G==="source"?r.utm_source : r.utm_source+"|"+md+"|"+cp+"|"+ct; }
+  var g={}; rs.forEach(function(r){var k=keyOf(r);(g[k]=g[k]||[]).push(r);});
+  function uniq(a,f){var o={};a.forEach(function(r){o[f(r)]=1;});return Object.keys(o);}
+  function tries(cp,ct,md){ if(ct==="(없음)") return []; var dir=CREATIVE_DIR+(cp!=="(없음)"?cp+"/":""), t=[];
+    if(md) t.push(dir+ct+"_"+md+".jpg",dir+ct+"_"+md+".png"); t.push(dir+ct+".jpg",dir+ct+".png"); return t; }
+  var list=Object.keys(g).map(function(k){var p=k.split("|"),grp=g[k],o={s:sum(c,grp),src:"",img:null};
+    if(G==="content"){ var srcs=uniq(grp,function(r){return r.utm_source;}), mds=uniq(grp,function(r){return r.utm_medium||"";}).filter(Boolean);
+      o.name=p[1]; o.sub=p[0]+" · 채널 "+srcs.length+" · 지면 "+(mds.length||"-"); o.img=tries(p[0],p[1],state.md!=="all"?state.md:""); }
+    else if(G==="medium"){ o.name=p[0]?mdName(p[0]):"(지면 없음)"; o.sub=p[0]||"utm_medium 없음"; o.icon=true; }
+    else if(G==="source"){ o.name=chName(p[0]); o.sub=p[0]||"utm_source 없음"; o.src=p[0]; o.icon=true; }
+    else { o.name=p[3]; o.src=p[0]; o.sub=chName(p[0])+(p[1]?" · "+mdName(p[1]):"")+" · "+p[2]; o.img=tries(p[2],p[3],p[1]); }
+    return o;});
   if(!list.length){ $("aIns").innerHTML=""; $("adTbl").innerHTML='<tbody><tr><td class="l">이 조건에 맞는 방문이 아직 없어요.</td></tr></tbody>'; return; }
-  var ok=list.filter(function(o){return o.s.n>=LOW_N&&o.src!=="";});
+  var ok=list.filter(function(o){return o.s.n>=LOW_N && !(G==="source"&&o.src==="");});
   var bE=ok.slice().sort(function(a,b){return b.s.end-a.s.end;})[0], bC=ok.slice().sort(function(a,b){return b.s.cta-a.s.cta;})[0], bF=ok.slice().sort(function(a,b){return b.s.fast-a.s.fast;})[0];
-  $("aIns").innerHTML = ok.length ?
-    ins("🏆","CTA 클릭률 최고 소재",bC.cont,esc(chName(bC.src))+" · "+pct(bC.s.cta)+" · 방문 "+fmt(bC.s.n))+
-    ins("📜","끝까지 도달 최고 소재",bE.cont,esc(chName(bE.src))+" · "+pct(bE.s.end)+" → 페이지와 메시지가 맞는 소재")+
-    ins("⚠️","빠른 이탈 최고 소재",bF.cont,esc(chName(bF.src))+" · "+pct(bF.s.fast)+" 이탈 → 문구·이미지 점검",true)
-    : ins("ℹ️","판단 보류","표본이 충분한 소재가 아직 없어요","소재당 방문 "+LOW_N+"회 이상부터 비교해요");
-  list.sort(function(a,b){var va=adSort.k==="name"?a.cont:a.s[adSort.k],vb=adSort.k==="name"?b.cont:b.s[adSort.k];
+  $("aIns").innerHTML = ok.length>1 ?
+    ins("🏆","CTA 클릭률 최고 "+WORD,bC.name,esc(bC.sub)+" · "+pct(bC.s.cta)+" · 방문 "+fmt(bC.s.n))+
+    ins("📜","끝까지 도달 최고 "+WORD,bE.name,esc(bE.sub)+" · "+pct(bE.s.end)+" → 페이지와 메시지가 맞아요")+
+    ins("⚠️","빠른 이탈 최고 "+WORD,bF.name,esc(bF.sub)+" · "+pct(bF.s.fast)+" 이탈 → 문구·이미지 점검",true)
+    : ins("ℹ️","판단 보류","비교할 만큼 쌓인 "+WORD+({content:"가",medium:"이",source:"이",all:"이"}[G])+" 아직 부족해요",WORD+"당 방문 "+LOW_N+"회 이상인 것이 2개 이상일 때 비교해요");
+  if(ok.length<2){ bE=bC=bF=null; }
+  list.sort(function(a,b){var va=adSort.k==="name"?a.name:a.s[adSort.k],vb=adSort.k==="name"?b.name:b.s[adSort.k];
     var lowA=a.s.n<LOW_N,lowB=b.s.n<LOW_N; if(lowA!==lowB) return lowA?1:-1; return (va>vb?1:va<vb?-1:0)*adSort.dir;});
-  var cols=[["name","채널 · 캠페인 · 소재","l"],["n","방문"],["fast","빠른 이탈"],["eng","참여율"],["dur","평균 체류"],["end","끝까지 도달"],["cta","CTA 클릭률"]];
+  var head={content:"소재",medium:"지면",source:"채널",all:"채널 · 지면 · 캠페인 · 소재"}[G];
+  var cols=[["name",head,"l"],["n","방문"],["fast","빠른 이탈"],["eng","참여율"],["dur","평균 체류"],["end","끝까지 도달"],["cta","CTA 클릭률"]];
   var t='<thead><tr>'+cols.map(function(x){return '<th class="'+(x[2]||"")+'" data-k="'+x[0]+'" style="cursor:pointer">'+x[1]+(adSort.k===x[0]?(adSort.dir<0?" ↓":" ↑"):"")+'</th>';}).join("")+'</tr></thead><tbody>';
-  list.forEach(function(o){var x=o.s,low=x.n<LOW_N;
-    var th=(o.cont&&o.cont!=="(없음)")?'<a class="cre" href="'+esc(CREATIVE_DIR+o.cont)+'.jpg" target="_blank" rel="noopener" data-c="'+esc(o.cont)+'"><img alt="" loading="lazy" src="'+esc(CREATIVE_DIR+o.cont)+'.jpg"></a>':'<span class="cre cre--none"></span>';
-    t+='<tr'+(low?' class="is-low"':'')+'><td class="l"><div class="adc">'+th+'<div><b>'+esc(o.cont)+'</b>'+(low?' <span class="tag tag--low">표본 부족</span>':'')+'<span class="sub">'+esc(chName(o.src))+' · '+esc(o.camp)+'</span></div></div></td>'+
+  list.forEach(function(o){var x=o.s,low=x.n<LOW_N, th="";
+    if(o.img) th=o.img.length?'<a class="cre" target="_blank" rel="noopener" href="'+esc(o.img[0])+'" data-tries="'+esc(o.img.join("|"))+'"><img alt="" loading="lazy" src="'+esc(o.img[0])+'"></a>':'<span class="cre cre--none"></span>';
+    t+='<tr'+(low?' class="is-low"':'')+'><td class="l"><div class="adc">'+th+'<div><b>'+esc(o.name)+'</b>'+(low?' <span class="tag tag--low">표본 부족</span>':'')+'<span class="sub">'+esc(o.sub)+'</span></div></div></td>'+
       '<td>'+fmt(x.n)+'</td><td'+(!low&&o===bF?' class="is-hot"':'')+'>'+pct(x.fast,0)+'</td><td>'+pct(x.eng,0)+'</td><td>'+secs(x.dur)+'</td>'+
       '<td'+(!low&&o===bE?' class="best"':'')+'>'+pct(x.end,0)+'</td><td'+(!low&&o===bC?' class="best"':'')+'>'+pct(x.cta)+'</td></tr>';});
   $("adTbl").innerHTML=t+'</tbody>';
-  // .jpg가 없으면 .png, 그것도 없으면 빈 칸
-  $("adTbl").querySelectorAll(".cre img").forEach(function(im){ im.onerror=function(){
-    var a=im.parentNode, base=CREATIVE_DIR+a.dataset.c;
-    if(!im.dataset.png){ im.dataset.png=1; im.src=base+".png"; a.href=base+".png"; }
-    else { a.className="cre cre--none"; a.removeAttribute("href"); im.remove(); } }; });
+  // 이미지: 소재_지면 → 소재 순서로 찾고(.jpg → .png), 없으면 빗금 칸
+  $("adTbl").querySelectorAll(".cre img").forEach(function(im){ var i=0; im.onerror=function(){
+    var a=im.parentNode, tt=a.dataset.tries.split("|"); i++;
+    if(i<tt.length){ im.src=tt[i]; a.href=tt[i]; } else { a.className="cre cre--none"; a.removeAttribute("href"); im.remove(); } }; });
   $("adTbl").querySelectorAll("th").forEach(function(th){th.onclick=function(){var k=th.dataset.k;adSort={k:k,dir:adSort.k===k?-adSort.dir:-1};renderAds();};});
 }
 
@@ -690,12 +717,13 @@ Object.keys(TITLES).forEach(function(k){ SCREEN_HTML[k]=$("s-"+k).innerHTML; });
 $("fFrom").value=state.from; $("fTo").value=state.to;
 $("fCamp").onchange=function(){state.camp=this.value;buildAdOpts();render();};
 $("fCh").onchange=function(){state.ch=this.value;buildAdOpts();render();};
+$("fMd").onchange=function(){state.md=this.value;buildAdOpts();render();};
 $("fAc").onchange=function(){state.ac=this.value;buildAdOpts();render();};
 $("fCt").onchange=function(){state.ct=this.value;render();};
 $("fFrom").onchange=function(){state.from=this.value;load();};
 $("fTo").onchange=function(){state.to=this.value;load();};
 function seg(id,fn){ $(id).querySelectorAll("button").forEach(function(b){b.onclick=function(){$(id).querySelectorAll("button").forEach(function(x){x.setAttribute("aria-pressed","false");});b.setAttribute("aria-pressed","true");fn(b.dataset.v);render();};}); }
-seg("fDev",function(v){state.dev=v;}); seg("fTest",function(v){state.test=v==="1";});
+seg("fDev",function(v){state.dev=v;}); seg("fGroup",function(v){state.adGroup=v;}); seg("fTest",function(v){state.test=v==="1";});
 document.querySelectorAll(".nav__i").forEach(function(b){b.onclick=function(){go(b.dataset.screen);};});
 $("btnRefresh").onclick=function(){ load(true); };
 $("keyForm").onsubmit=function(e){ e.preventDefault(); var v=$("keyInput").value.trim(); if(!v) return; store("sd_read_key",v); $("keyErr").textContent=""; $("keyModal").hidden=true; load(true); };
