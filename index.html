@@ -606,19 +606,22 @@ function renderAds(){
   $("adHint").textContent={content:"채널·지면을 합쳐서 소재끼리 비교해요",medium:"소재를 합쳐서 지면(feed·da·video…)끼리 비교해요",
     source:"소재·지면을 합쳐서 채널끼리 비교해요",all:"채널 × 지면 × 소재 조합을 하나씩 따로 봐요"}[G]+" · 정렬: 열 제목 클릭";
   function keyOf(r){ var cp=r.utm_campaign||"(없음)", ct=r.utm_content||"(없음)", md=r.utm_medium||"";
-    return G==="content"?cp+"|"+ct : G==="medium"?md : G==="source"?r.utm_source : r.utm_source+"|"+md+"|"+cp+"|"+ct; }
+    return G==="content"?ct : G==="medium"?md : G==="source"?r.utm_source : r.utm_source+"|"+md+"|"+cp+"|"+ct; }
   var g={}; rs.forEach(function(r){var k=keyOf(r);(g[k]=g[k]||[]).push(r);});
   function uniq(a,f){var o={};a.forEach(function(r){o[f(r)]=1;});return Object.keys(o);}
   // 찾는 순서: 소재_채널_지면 → 소재_지면 → 소재  (.jpg → .png)
-  function tries(cp,ct,md,src){ if(ct==="(없음)") return []; var dir=CREATIVE_DIR+(cp!=="(없음)"?cp+"/":""), t=[];
-    function add(n){ t.push(dir+n+".jpg",dir+n+".png",dir+n+".jpg.jpg",dir+n+".png.png"); }   // .jpg.jpg: 윈도우에서 확장자가 두 번 붙은 경우도 인식
+  // 폴더: creatives/광고캠페인/ → 없으면 끝 단어를 뗀 상위 캠페인 폴더 (project_tofu_know → project_tofu)
+  function tries(cp,ct,md,src){ if(ct==="(없음)") return []; var dirs=[], t=[];
+    if(cp==="(없음)") dirs.push(CREATIVE_DIR); else { dirs.push(CREATIVE_DIR+cp+"/"); var seg=cp.split("_"); if(seg.length>=3) dirs.push(CREATIVE_DIR+seg.slice(0,-1).join("_")+"/"); }
+    function add(n){ dirs.forEach(function(d){ t.push(d+n+".jpg",d+n+".png",d+n+".jpg.jpg",d+n+".png.png"); }); }   // .jpg.jpg: 윈도우에서 확장자가 두 번 붙은 경우도 인식
     if(md&&src) add(ct+"_"+src+"_"+md); if(md) add(ct+"_"+md); add(ct); return t; }
   var list=Object.keys(g).map(function(k){var p=k.split("|"),grp=g[k],o={s:sum(c,grp),src:"",img:null};
     if(G==="content"){ var srcs=uniq(grp,function(r){return r.utm_source;}), mds=uniq(grp,function(r){return r.utm_medium||"";}).filter(Boolean);
-      o.name=p[1]; o.sub=p[0]+" · 채널 "+srcs.length+" · 지면 "+(mds.length||"-"); // 이 소재가 실제로 걸린 채널·지면 조합마다 이미지를 찾아서, 서로 다른 것만 나란히 보여줌
-      var cb={}; grp.forEach(function(r){var k=r.utm_source+"|"+(r.utm_medium||""); cb[k]=(cb[k]||0)+1;});
+      var cps=uniq(grp,function(r){return r.utm_campaign||"(없음)";});
+      o.name=p[0]; o.sub=cps[0]+(cps.length>1?" 외 "+(cps.length-1):"")+" · 채널 "+srcs.length+" · 지면 "+(mds.length||"-"); // 이 소재가 실제로 걸린 채널·지면 조합마다 이미지를 찾아서, 서로 다른 것만 나란히 보여줌
+      var cb={}; grp.forEach(function(r){var k=r.utm_source+"|"+(r.utm_medium||"")+"|"+(r.utm_campaign||"(없음)"); cb[k]=(cb[k]||0)+1;});
       o.imgs=Object.keys(cb).sort(function(a,b){return cb[b]-cb[a];}).map(function(k){var q=k.split("|");
-        return {t:tries(p[0],p[1],q[1],q[0]), title:chName(q[0])+(q[1]?" · "+mdName(q[1]):"")};}); }
+        return {t:tries(q[2],p[0],q[1],q[0]), title:chName(q[0])+(q[1]?" · "+mdName(q[1]):"")};}); }
     else if(G==="medium"){ o.name=p[0]?mdName(p[0]):"(지면 없음)"; o.sub=p[0]||"utm_medium 없음"; o.icon=true; }
     else if(G==="source"){ o.name=chName(p[0]); o.sub=p[0]||"utm_source 없음"; o.src=p[0]; o.icon=true; }
     else { o.name=p[3]; o.src=p[0]; o.sub=chName(p[0])+(p[1]?" · "+mdName(p[1]):"")+" · "+p[2]; o.imgs=[{t:tries(p[2],p[3],p[1],p[0]), title:o.sub}]; }
