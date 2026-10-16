@@ -70,6 +70,17 @@
   @media (max-width:760px){.pagelink{margin-left:0;flex:1 1 100%;justify-content:center;}}
   .f label{font-size:12.5px;color:var(--ink-2);}
   .inp{height:42px;border:1px solid #d9dbe0;border-radius:10px;background:#fff;padding:0 14px;font-size:14px;min-width:150px;}
+  .msel{position:relative;}
+  .msel__btn{text-align:left;cursor:pointer;padding-right:34px;min-width:170px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    background-image:linear-gradient(45deg,transparent 50%,var(--ink-2) 50%),linear-gradient(135deg,var(--ink-2) 50%,transparent 50%);
+    background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;}
+  .msel__pop{position:absolute;z-index:30;top:46px;left:0;min-width:100%;background:#fff;border:1px solid #d9dbe0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.1);padding:6px;}
+  .msel__pop[hidden]{display:none;}
+  .msel__pop label{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:14px;color:var(--ink);white-space:nowrap;}
+  .msel__pop label:hover{background:var(--or-soft);}
+  .msel__pop input{accent-color:var(--or);width:16px;height:16px;margin:0;}
+  .msel__pop .msel__all{border-bottom:1px solid var(--line);border-radius:7px 7px 0 0;margin-bottom:4px;}
+  .msel__pop small{margin-left:auto;color:var(--ink-3);font-size:12px;}
   select.inp{padding-right:34px;appearance:none;cursor:pointer;
     background-image:linear-gradient(45deg,transparent 50%,var(--ink-2) 50%),linear-gradient(135deg,var(--ink-2) 50%,transparent 50%);
     background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;}
@@ -235,9 +246,10 @@
       <div class="f" id="fCampBox"><label for="fCamp">기획페이지</label><select class="inp" id="fCamp" style="min-width:260px"></select></div>
       <div class="f"><label for="fFrom">시작일</label><input class="inp" type="date" id="fFrom"></div>
       <div class="f"><label for="fTo">종료일</label><input class="inp" type="date" id="fTo"></div>
-      <div class="f"><label for="fCh">채널</label><select class="inp" id="fCh"></select></div>
-      <div class="f"><label for="fMd">지면</label><select class="inp" id="fMd"></select></div>
+      <div class="f"><label>채널</label>
+        <div class="msel" id="fChBox"><button type="button" class="inp msel__btn" id="fCh">전체 채널</button><div class="msel__pop" id="fChPop" hidden></div></div></div>
       <div class="f"><label for="fAc">광고 캠페인</label><select class="inp" id="fAc"></select></div>
+      <div class="f"><label for="fMd">지면</label><select class="inp" id="fMd"></select></div>
       <div class="f"><label for="fCt">소재</label><select class="inp" id="fCt"></select></div>
       <div class="f"><label>테스트 방문</label>
         <div class="seg" id="fTest"><button data-v="0" aria-pressed="true">제외</button><button data-v="1" aria-pressed="false">포함</button></div>
@@ -366,7 +378,7 @@ var PREFIX_NAME = { showroom_directions:"매장 길찾기", showroom_call:"매�
    ========================================================= */
 function ymd(d){ var k=new Date(d.getTime()+9*36e5); return k.toISOString().slice(0,10); }
 var NOW = new Date();
-var state = { screen:"list", camp:"", from:ymd(new Date(NOW.getTime()-13*864e5)), to:ymd(NOW), ch:"all", md:"all", ac:"all", ct:"all", adGroup:"content", dev:"all", test:false };
+var state = { screen:"list", camp:"", from:ymd(new Date(NOW.getTime()-13*864e5)), to:ymd(NOW), ch:[], md:"all", ac:"all", ct:"all", adGroup:"content", dev:"all", test:false };
 var CAMPAIGNS = [], SESSIONS = [], loadedRange = "";
 var $ = function(id){ return document.getElementById(id); };
 function store(k,v){ try{ if(v===undefined) return localStorage.getItem(k); if(v===null) localStorage.removeItem(k); else localStorage.setItem(k,v);}catch(e){ return null; } }
@@ -424,9 +436,9 @@ function load(force){
       $("fCamp").innerHTML = CAMPAIGNS.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join("");
       $("fCamp").value = state.camp;
       var srcs = {}; SESSIONS.forEach(function(s){ srcs[s.utm_source]=1; });
-      var cur = state.ch;
-      $("fCh").innerHTML = '<option value="all">전체 채널</option>' + Object.keys(srcs).filter(function(k){return k!=="test";}).sort().map(function(k){ return '<option value="'+esc(k)+'">'+esc(chName(k))+'</option>'; }).join("");
-      $("fCh").value = srcs[cur]||cur==="all" ? cur : "all"; state.ch=$("fCh").value;
+      CH_ALL = Object.keys(srcs).filter(function(k){return k!=="test";}).sort();
+      state.ch = state.ch.filter(function(k){return srcs[k];});
+      buildChPop();
       buildAdOpts();
       var t=new Date(); $("sideFoot").innerHTML = "마지막 업데이트<br><b>"+t.toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})+"</b><br>캠페인 등록: campaigns 탭";
       render();
@@ -446,7 +458,7 @@ function chName(k){ return SOURCE_NAME[k]!=null ? SOURCE_NAME[k] : k; }
 function inRange(s){ var f=new Date(state.from+"T00:00:00+09:00"), t=new Date(state.to+"T23:59:59+09:00"); return s.started_at>=f && s.started_at<=t; }
 function rows(id,o){ o=o||{}; return SESSIONS.filter(function(s){
   return s.campaign_id===id && inRange(s) && (state.test || s.utm_source!=="test") &&
-    (o.ignoreCh||state.ch==="all"||s.utm_source===state.ch) &&
+    (o.ignoreCh||chOk(s.utm_source)) &&
     (o.ignoreAd||state.md==="all"||(s.utm_medium||"")===state.md) && (o.ignoreAd||state.ac==="all"||(s.utm_campaign||"")===state.ac) && (o.ignoreAd||state.ct==="all"||(s.utm_content||"")===state.ct) && (o.ignoreDev||state.dev==="all"||s.device===state.dev); }); }
 
 function sum(c,rs){
@@ -490,21 +502,41 @@ function mv(e){var x=e.clientX+14,y=e.clientY+14;if(x+tip.offsetWidth>innerWidth
 function ins(ic,k,v,d,warn){return '<div class="ins'+(warn?' ins--warn':'')+'"><span class="ins__ic">'+ic+'</span><div><p class="ins__k">'+k+'</p><p class="ins__v">'+esc(v)+'</p><p class="ins__d">'+d+'</p></div></div>';}
 function kpi(v,u,k,d,alert){return '<div class="kpi'+(alert?' kpi--alert':'')+'"><p class="kpi__v">'+v+(u?'<small>'+u+'</small>':'')+'</p><p class="kpi__k">'+k+'</p>'+(d?'<p class="kpi__d">'+esc(d)+'</p>':'')+'</div>';}
 function el(t,c,x){var e=document.createElement(t);e.className=c;e.textContent=x;return e;}
+// 채널: 체크해서 여러 개 선택 (아무것도 안 고르면 전체)
+var CH_ALL=[];
+function chOk(src){ return !state.ch.length || state.ch.indexOf(src)>-1; }
+function chLabel(){ if(!state.ch.length) return "전체 채널"; if(state.ch.length<=2) return state.ch.map(chName).join(", "); return chName(state.ch[0])+" 외 "+(state.ch.length-1); }
+function buildChPop(){
+  var cnt={}; SESSIONS.forEach(function(r){ if(r.campaign_id===state.camp && inRange(r)) cnt[r.utm_source]=(cnt[r.utm_source]||0)+1; });
+  var keys=CH_ALL.filter(function(k){return cnt[k];}).sort(function(a,b){return cnt[b]-cnt[a];});
+  $("fChPop").innerHTML='<label class="msel__all"><input type="checkbox" data-k="__all"'+(state.ch.length?'':' checked')+'>전체 채널</label>'+
+    keys.map(function(k){return '<label><input type="checkbox" data-k="'+esc(k)+'"'+(state.ch.indexOf(k)>-1?' checked':'')+'>'+esc(chName(k))+'<small>'+fmt(cnt[k])+'</small></label>';}).join("");
+  $("fChPop").querySelectorAll("input").forEach(function(cb){ cb.onchange=function(){
+    var k=cb.dataset.k;
+    if(k==="__all") state.ch=[];
+    else { state.ch=[].slice.call($("fChPop").querySelectorAll('input[data-k]:checked')).map(function(x){return x.dataset.k;}).filter(function(x){return x!=="__all";});
+      if(state.ch.length===keys.length) state.ch=[]; }
+    buildAdOpts(); render(); }; });
+  $("fCh").textContent=chLabel();
+}
 // 광고 캠페인·소재 드롭다운: 지금 고른 기획페이지·채널(·광고 캠페인)에 실제로 들어온 값만 보여줌
 function buildAdOpts(){
+  if(CH_ALL.length) buildChPop();
   function opts(id,key,base,allLabel,cur,nm){
     var cnt={}; base.forEach(function(r){var v=r[key]||""; cnt[v]=(cnt[v]||0)+1;});
     var ks=Object.keys(cnt).sort(function(a,b){return cnt[b]-cnt[a];});
     $(id).innerHTML='<option value="all">'+allLabel+'</option>'+ks.map(function(k){return '<option value="'+esc(k)+'">'+esc(k?(nm?nm(k):k):"(없음)")+' ('+fmt(cnt[k])+')</option>';}).join("");
     var v=(cur==="all"||cnt[cur]!=null)?cur:"all"; $(id).value=v; return v;
   }
-  var base=SESSIONS.filter(function(r){return r.campaign_id===state.camp && inRange(r) && (state.test||r.utm_source!=="test") && (state.ch==="all"||r.utm_source===state.ch);});
+  var base=SESSIONS.filter(function(r){return r.campaign_id===state.camp && inRange(r) && (state.test||r.utm_source!=="test") && chOk(r.utm_source);});
+  // 순서: 채널 → 광고 캠페인 → 지면 → 소재 (위에서 고른 값에 맞는 것만 아래에 보여줌)
+  state.ac=opts("fAc","utm_campaign",base,"전체 캠페인",state.ac);
+  base=base.filter(function(r){return state.ac==="all"||(r.utm_campaign||"")===state.ac;});
   state.md=opts("fMd","utm_medium",base,"전체 지면",state.md,mdName);
   base=base.filter(function(r){return state.md==="all"||(r.utm_medium||"")===state.md;});
-  state.ac=opts("fAc","utm_campaign",base,"전체 캠페인",state.ac);
-  state.ct=opts("fCt","utm_content",base.filter(function(r){return state.ac==="all"||(r.utm_campaign||"")===state.ac;}),"전체 소재",state.ct);
+  state.ct=opts("fCt","utm_content",base,"전체 소재",state.ct);
 }
-function label(){return state.from.replace(/-/g,".")+" ~ "+state.to.replace(/-/g,".")+" · "+(state.ch==="all"?"전체 채널":chName(state.ch))+(state.md!=="all"?" · "+(state.md?mdName(state.md):"(없음)"):"")+(state.ac!=="all"?" · "+(state.ac||"(없음)"):"")+(state.ct!=="all"?" · "+(state.ct||"(없음)"):"")+" · "+({all:"전체 기기",mobile:"모바일",pc:"PC"})[state.dev];}
+function label(){return state.from.replace(/-/g,".")+" ~ "+state.to.replace(/-/g,".")+" · "+chLabel()+(state.ac!=="all"?" · "+(state.ac||"(없음)"):"")+(state.md!=="all"?" · "+(state.md?mdName(state.md):"(없음)"):"")+(state.ct!=="all"?" · "+(state.ct||"(없음)"):"")+" · "+({all:"전체 기기",mobile:"모바일",pc:"PC"})[state.dev];}
 function empty(box,msg){ box.innerHTML='<div class="state">'+msg+'</div>'; }
 
 var SCREEN_HTML = {};
@@ -539,7 +571,7 @@ function renderDetail(){
   $("pSub").textContent=c.name+" · "+label();
   if(!s.n){ $("dIns").innerHTML=""; $("dKpis").innerHTML='<div class="state" style="grid-column:1/-1"><b>이 조건에 맞는 방문이 아직 없어요.</b><br>기간·채널·기기 필터를 넓혀보세요.</div>'; $("funnel").innerHTML=""; $("rank").innerHTML=""; $("chTbl").innerHTML=""; $("storeTbl").innerHTML=""; return; }
   var w={i:1,d:-1,all:0}; for(var i=1;i<s.reach.length;i++){var p=s.reach[i-1],d=p?s.exitPlain[i-1]/p:0; if(d>w.d)w={i:i,d:d,all:p?(p-s.reach[i])/p:0,out:s.exitOut[i-1],plain:s.exitPlain[i-1]};}
-  var all=rows(c.id,{ignoreCh:true}), srcs={}; all.forEach(function(x){srcs[x.utm_source]=1;});
+  var all=rows(c.id,{ignoreCh:true}).filter(function(r){return chOk(r.utm_source);}), srcs={};   // 채널 비교도 고른 채널끼리 all.forEach(function(x){srcs[x.utm_source]=1;});
   var chS=Object.keys(srcs).map(function(k){return {k:k,name:chName(k),s:sum(c,all.filter(function(x){return x.utm_source===k;}))};}).sort(function(a,b){return b.s.n-a.s.n;});
   var ok=chS.filter(function(o){return o.s.n>=LOW_N&&o.k!=="";});
   var bc=ok.slice().sort(function(a,b){return b.s.cta-a.s.cta;})[0], bf=ok.slice().sort(function(a,b){return b.s.fast-a.s.fast;})[0];
@@ -743,7 +775,8 @@ function render(){
 Object.keys(TITLES).forEach(function(k){ SCREEN_HTML[k]=$("s-"+k).innerHTML; });
 $("fFrom").value=state.from; $("fTo").value=state.to;
 $("fCamp").onchange=function(){state.camp=this.value;buildAdOpts();render();};
-$("fCh").onchange=function(){state.ch=this.value;buildAdOpts();render();};
+$("fCh").onclick=function(e){ e.stopPropagation(); $("fChPop").hidden=!$("fChPop").hidden; };
+document.addEventListener("click",function(e){ if(!$("fChBox").contains(e.target)) $("fChPop").hidden=true; });
 $("fMd").onchange=function(){state.md=this.value;buildAdOpts();render();};
 $("fAc").onchange=function(){state.ac=this.value;buildAdOpts();render();};
 $("fCt").onchange=function(){state.ct=this.value;render();};
