@@ -227,12 +227,12 @@
     <div><p class="logo__t">SYSDESIGN 분석</p><p class="logo__s">기획페이지 성과를 한눈에</p></div>
   </div>
   <p class="nav__g">캠페인</p>
-  <button class="nav__i" data-screen="list" aria-current="page"><span class="nav__ic">🗂️</span>캠페인 비교<span class="nav__b" id="bLive"></span></button>
+  <button class="nav__i" data-screen="list" aria-current="page"><span class="nav__ic">🗂️</span>캠페인 비교</button>
   <button class="nav__i" data-screen="detail"><span class="nav__ic">📈</span>캠페인 상세</button>
   <p class="nav__g">광고 분석</p>
-  <button class="nav__i" data-screen="ads"><span class="nav__ic">🎯</span>광고 소재별 성과<span class="nav__b" id="bLow"></span></button>
+  <button class="nav__i" data-screen="ads"><span class="nav__ic">🎯</span>광고 소재별 성과</button>
   <p class="nav__g">페이지 분석</p>
-  <button class="nav__i" data-screen="heat"><span class="nav__ic">🔥</span>클릭 히트맵<span class="nav__b" id="bDead"></span></button>
+  <button class="nav__i" data-screen="heat"><span class="nav__ic">🔥</span>클릭 히트맵</button>
   <p class="side__foot" id="sideFoot">불러오는 중…</p>
 </aside>
 
@@ -759,14 +759,10 @@ function render(){
   if(!CAMPAIGNS.length){ if(loadedRange) showState('<b>등록된 캠페인이 없어요.</b><br>시트의 campaigns 탭에 캠페인을 한 줄 추가해주세요.'); return; }
   if(state.screen==="list"){ $("pSub").textContent=label(); renderList(); }
   else if(state.screen==="detail") renderDetail(); else if(state.screen==="ads") renderAds(); else renderHeat();
-  $("bLive").textContent=CAMPAIGNS.filter(function(c){return c.status==="live";}).length;
   var c=camp(state.camp), pl=$("fPage");
   if(c && c.url && state.screen!=="list"){
     try{ var u=new URL(c.url); u.searchParams.set("sdtrack","off"); pl.href=u.toString(); pl.hidden=false; }catch(e){ pl.hidden=true; }
   } else pl.hidden=true;
-  if(c){ var rs=rows(c.id), g={}; rs.forEach(function(r){var k=r.utm_source+"|"+r.utm_content;g[k]=(g[k]||0)+1;});
-    $("bLow").textContent=Object.keys(g).filter(function(k){return g[k]<LOW_N;}).length;
-    var s=sum(c,rs); $("bDead").textContent=Object.keys(s.cN).filter(function(k){return dead(c,k);}).length; }
 }
 
 Object.keys(TITLES).forEach(function(k){ SCREEN_HTML[k]=$("s-"+k).innerHTML; });
