@@ -568,7 +568,8 @@ function renderDetail(){
   $("pSub").textContent=c.name+" · "+label();
   if(!s.n){ $("dIns").innerHTML=""; $("dKpis").innerHTML='<div class="state" style="grid-column:1/-1"><b>이 조건에 맞는 방문이 아직 없어요.</b><br>기간·채널·기기 필터를 넓혀보세요.</div>'; $("funnel").innerHTML=""; $("rank").innerHTML=""; $("chTbl").innerHTML=""; $("storeTbl").innerHTML=""; return; }
   var w={i:1,d:-1,all:0}; for(var i=1;i<s.reach.length;i++){var p=s.reach[i-1],d=p?s.exitPlain[i-1]/p:0; if(d>w.d)w={i:i,d:d,all:p?(p-s.reach[i])/p:0,out:s.exitOut[i-1],plain:s.exitPlain[i-1]};}
-  var all=rows(c.id,{ignoreCh:true}).filter(function(r){return chOk(r.utm_source);}), srcs={};   // 채널 비교도 고른 채널끼리 all.forEach(function(x){srcs[x.utm_source]=1;});
+  // 채널 비교도 고른 채널끼리
+  var all=rows(c.id,{ignoreCh:true}).filter(function(r){return chOk(r.utm_source);}), srcs={}; all.forEach(function(x){srcs[x.utm_source]=1;});
   var chS=Object.keys(srcs).map(function(k){return {k:k,name:chName(k),s:sum(c,all.filter(function(x){return x.utm_source===k;}))};}).sort(function(a,b){return b.s.n-a.s.n;});
   var ok=chS.filter(function(o){return o.s.n>=LOW_N&&o.k!=="";});
   var bc=ok.slice().sort(function(a,b){return b.s.cta-a.s.cta;})[0], bf=ok.slice().sort(function(a,b){return b.s.fast-a.s.fast;})[0];
