@@ -156,6 +156,10 @@
   .tbl tr.is-low td{color:var(--ink-3);}
   .tbl tr.is-low td.l b{color:var(--ink-3);}
   .tbl td.l b{font-weight:700;}
+  .tbl tr.is-sub td{font-size:13px;color:var(--ink-2);padding-top:8px;padding-bottom:8px;background:var(--line-2,#f6f7f9);}
+  .tbl tr.is-sub td.l{padding-left:30px;}
+  .tbl tr.is-sub td.l::before{content:"└ ";color:var(--ink-3);}
+  .tbl tr.is-sub.is-low td{color:var(--ink-3);}
   .tbl .sub{display:block;font-size:11.5px;color:var(--ink-3);margin-top:2px;}
   .adc{display:flex;align-items:center;gap:12px;}
   .cre{flex:none;width:56px;height:56px;border-radius:8px;overflow:hidden;background:var(--line-2);display:block;border:1px solid var(--line);}
@@ -594,7 +598,18 @@ function renderDetail(){
   chS.forEach(function(o){var x=o.s,low=x.n<LOW_N;
     t+='<tr'+(low?' class="is-low"':'')+'><td class="l"><b>'+esc(o.name)+'</b>'+(low?' <span class="tag tag--low">표본 부족</span>':'')+'</td><td>'+fmt(x.n)+'</td>'+
       '<td'+(!low&&bf&&bf.k===o.k?' class="is-hot"':'')+'>'+pct(x.fast,0)+'</td><td>'+pct(x.eng,0)+'</td><td>'+secs(x.dur)+'</td><td>'+pct(x.end,0)+'</td>'+
-      '<td'+(!low&&bc&&bc.k===o.k?' class="best"':'')+'>'+pct(x.cta)+'</td></tr>';});
+      '<td'+(!low&&bc&&bc.k===o.k?' class="best"':'')+'>'+pct(x.cta)+'</td></tr>';
+    // 채널 아래 지면별 줄 (지면이 2개 이상일 때)
+    var cr=all.filter(function(r){return r.utm_source===o.k;}), mds={};
+    cr.forEach(function(r){mds[r.utm_medium]=1;});
+    var mk=Object.keys(mds);
+    if(mk.length>1){
+      mk.map(function(m){return {m:m,s:sum(c,cr.filter(function(r){return r.utm_medium===m;}))};})
+        .sort(function(a,b){return b.s.n-a.s.n;})
+        .forEach(function(q){var y=q.s,lw=y.n<LOW_N;
+          t+='<tr class="is-sub'+(lw?' is-low':'')+'"><td class="l">'+esc(q.m?mdName(q.m):"(지면 없음)")+(lw?' <span class="tag tag--low">표본 부족</span>':'')+'</td><td>'+fmt(y.n)+'</td><td>'+pct(y.fast,0)+'</td><td>'+pct(y.eng,0)+'</td><td>'+secs(y.dur)+'</td><td>'+pct(y.end,0)+'</td><td>'+pct(y.cta)+'</td></tr>';});
+    }
+  });
   $("chTbl").innerHTML=t+'</tbody>';
 }
 
