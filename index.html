@@ -122,11 +122,11 @@
   .fr__val{font-size:13px;text-align:right;font-variant-numeric:tabular-nums;}
   .fr__val b{font-weight:700;}
   .drop{font-size:11.5px;color:var(--ink-3);margin-left:6px;}
-  .fr.is-drop .drop{color:var(--red);font-weight:700;}
+  .fr.is-drop .drop{color:var(--red);font-weight:700;} .fr.is-drop .ex{color:var(--red);font-weight:700;}
   .fr__split{grid-column:2 / 4;font-size:11.5px;color:var(--ink-3);margin-top:-6px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
   .fr__split{column-gap:10px;row-gap:2px;} .fr__split > span{white-space:nowrap;display:inline-flex;align-items:center;gap:4px;}
   .fr__split .dot{width:7px;height:7px;border-radius:999px;display:inline-block;}
-  .dot--out{background:var(--green);} .dot--plain{background:var(--red);}
+  .dot--out{background:var(--green);} .dot--plain{background:var(--red);} .dot--cta{background:var(--or);}
 
   /* 순위 */
   .rank-head,.rr{display:grid;grid-template-columns:22px 1fr 64px 58px;gap:10px;align-items:center;}
@@ -281,7 +281,7 @@
     <div class="kpis" id="dKpis"></div>
     <div class="g2">
       <div class="card">
-        <div class="card__h"><p class="card__t">📉 섹션 도달 퍼널</p><p class="card__s">% = 전체 방문 중 이 섹션까지 본 비율 · −% = 직전 섹션 대비 감소 · '여기서 멈춤' = 이 섹션이 마지막이었던 방문</p></div>
+        <div class="card__h"><p class="card__t">📉 섹션 도달 퍼널</p><p class="card__s">% = 전체 방문 중 이 섹션까지 본 비율 · 그냥 이탈 (%) = 이 섹션을 본 사람 중 상품으로 안 가고 여기서 나간 비율 · 주황 = 그 비율이 가장 높은 섹션</p></div>
         <div class="funnel" id="funnel"></div>
       </div>
       <div class="card">
@@ -309,7 +309,7 @@
         <div class="seg seg--sm" id="fGroup"><button data-v="content" aria-pressed="true">소재별</button><button data-v="medium" aria-pressed="false">지면별</button><button data-v="source" aria-pressed="false">채널별</button><button data-v="all" aria-pressed="false">전체 조합</button></div></div>
       <p class="card__s" id="adHint" style="margin:-4px 0 10px"></p>
       <div class="tbl-wrap"><table class="tbl" id="adTbl"></table></div>
-      <p class="note">끝까지 도달·CTA 클릭률이 높은 소재 = 이 페이지와 메시지가 맞는 소재예요. 빠른 이탈이 높은 소재는 문구·이미지가 페이지 첫 화면과 맞는지 먼저 확인해보세요. 방문 100 미만 소재는 판단을 보류하세요.</p>
+      <p class="note">다음 행동(상품 이동 + 쇼룸 CTA)·CTA 클릭률이 높은 소재 = 이 페이지와 메시지가 맞는 소재예요. 빠른 이탈이 높은 소재는 문구·이미지가 페이지 첫 화면과 맞는지 먼저 확인해보세요. 방문 100 미만 소재는 판단을 보류하세요.</p>
     </div>
   </section>
 
@@ -466,21 +466,22 @@ function rows(id,o){ o=o||{}; return SESSIONS.filter(function(s){
     (o.ignoreAd||(inSel(state.md,s.utm_medium||"") && inSel(state.ac,s.utm_campaign||"") && inSel(state.ct,s.utm_content||""))) && (o.ignoreDev||state.dev==="all"||s.device===state.dev); }); }
 
 function sum(c,rs){
-  var n=rs.length,eng=0,dur=0,fast=0,cta=0,reach=c.sections.map(function(){return 0;}),cN={},cS={};
+  var n=rs.length,eng=0,dur=0,fast=0,cta=0,act=0,outAny=0,endOut=0,endCta=0,reach=c.sections.map(function(){return 0;}),cN={},cS={};
   var exitOut=c.sections.map(function(){return 0;}), exitPlain=c.sections.map(function(){return 0;});   // [i] = i번째 섹션에서 멈춘 방문
   var idx={}; c.sections.forEach(function(x,i){ idx[x[0]]=i; });
   rs.forEach(function(s){
     if(s.engaged)eng++; if(s.fast_exit)fast++; dur+=s.duration;
     s.sections.forEach(function(sec){ if(idx[sec]!=null) reach[idx[sec]]++; });
     var seen={}; s.clicks.forEach(function(k){ cN[k]=(cN[k]||0)+1; if(!seen[k]){ cS[k]=(cS[k]||0)+1; seen[k]=1; } });
-    if(c.cta && seen[c.cta]) cta++;
+    var hitCta=!!(c.cta && seen[c.cta]); if(hitCta) cta++;
+    var out=Object.keys(seen).some(function(k){ return OUT_PREFIX.some(function(p){ return k.indexOf(p)===0; }); });
+    if(out) outAny++; if(out||hitCta) act++;   // 다음 행동 = 상품으로 이동 또는 쇼룸 CTA
     var deep=-1; s.sections.forEach(function(sec){ if(idx[sec]!=null && idx[sec]>deep) deep=idx[sec]; });
     if(deep>-1 && deep<c.sections.length-1){
-      var out=Object.keys(seen).some(function(k){ return OUT_PREFIX.some(function(p){ return k.indexOf(p)===0; }); });
       if(out) exitOut[deep]++; else exitPlain[deep]++;
-    }
+    } else if(deep===c.sections.length-1){ if(out) endOut++; if(hitCta) endCta++; }
   });
-  return {n:n,eng:n?eng/n:0,dur:n?dur/n:0,fast:n?fast/n:0,reach:reach,end:n&&reach.length?reach[reach.length-1]/n:0,cta:n?cta/n:0,cN:cN,cS:cS,exitOut:exitOut,exitPlain:exitPlain};
+  return {n:n,eng:n?eng/n:0,dur:n?dur/n:0,fast:n?fast/n:0,reach:reach,end:n&&reach.length?reach[reach.length-1]/n:0,cta:n?cta/n:0,act:n?act/n:0,actN:act,out:n?outAny/n:0,outN:outAny,ctaN:cta,endOut:endOut,endCta:endCta,cN:cN,cS:cS,exitOut:exitOut,exitPlain:exitPlain};
 }
 function pct(v,d){ return (v*100).toFixed(d==null?1:d)+"%"; }
 function fmt(n){ return Math.round(n).toLocaleString("ko-KR"); }
@@ -549,18 +550,18 @@ function renderList(){
   if(!S.length){ $("listIns").innerHTML=""; $("camps").innerHTML='<div class="state" style="grid-column:1/-1"><b>선택한 기간에 방문 데이터가 없어요.</b><br>기간을 넓히거나, 기획페이지에 추적 코드가 붙어 있는지 확인해주세요.</div>'; $("cmpTbl").innerHTML=""; return; }
   var ok=S.filter(function(o){return o.s.n>=LOW_N;}), pool=ok.length?ok:S;
   var by=function(k){return pool.slice().sort(function(a,b){return b.s[k]-a.s[k];})[0];};
-  var bc=by("cta"),be=by("end"),bf=by("fast");
-  $("listIns").innerHTML = ins("🏆","CTA 클릭률 최고",bc.c.name,pct(bc.s.cta)+" · 방문 "+fmt(bc.s.n)) + ins("📜","끝까지 도달 최고",be.c.name,pct(be.s.end)+"가 마지막 섹션까지") +
+  var bc=by("cta"),be=by("act"),bf=by("fast");
+  $("listIns").innerHTML = ins("🏆","CTA 클릭률 최고",bc.c.name,pct(bc.s.cta)+" · 방문 "+fmt(bc.s.n)) + ins("👉","다음 행동 최고",be.c.name,pct(be.s.act)+"가 상품 이동·쇼룸 CTA") +
     ins("⚠️","빠른 이탈 최고",bf.c.name,pct(bf.s.fast)+"가 "+FAST_SEC+"초 안에 이탈",true);
   var box=$("camps"); box.innerHTML="";
   S.forEach(function(o){var c=o.c,s=o.s,low=s.n<LOW_N,b=document.createElement("button");b.className="camp";
     b.innerHTML='<div class="camp__top"><span class="tag '+(c.status==="live"?"tag--live":"")+'">'+(c.status==="live"?"● 진행 중":"종료")+'</span>'+(low?'<span class="tag tag--low">표본 부족</span>':'<span class="card__s">'+esc(c.id)+'</span>')+'</div>'+
       '<p class="camp__name">'+esc(c.name)+'</p><p class="camp__date">'+esc(c.start.replace(/-/g,"."))+" ~ "+(c.end?esc(c.end.replace(/-/g,".")):"진행 중")+'</p>'+
-      '<div class="camp__stats">'+cs(fmt(s.n),"방문")+cs(pct(s.fast,0),"빠른 이탈")+cs(pct(s.end,0),"끝까지 도달",o===be)+cs(pct(s.cta),"CTA 클릭률",o===bc)+'</div>'+
+      '<div class="camp__stats">'+cs(fmt(s.n),"방문")+cs(pct(s.fast,0),"빠른 이탈")+cs(pct(s.act,0),"다음 행동",o===be)+cs(pct(s.cta),"CTA 클릭률",o===bc)+'</div>'+
       '<div class="reach-mini">'+s.reach.map(function(v){return '<i style="height:'+Math.max(6,v/s.n*100)+'%"></i>';}).join("")+'</div>';
     b.onclick=function(){state.camp=c.id;$("fCamp").value=c.id;go("detail");}; box.appendChild(b);});
-  var t='<thead><tr><th class="l">캠페인</th><th>방문</th><th>빠른 이탈</th><th>참여율</th><th>평균 체류</th><th>끝까지 도달</th><th>CTA 클릭률</th></tr></thead><tbody>';
-  S.forEach(function(o){var s=o.s,low=s.n<LOW_N;t+='<tr'+(low?' class="is-low"':'')+'><td class="l"><b>'+esc(o.c.name)+'</b>'+(low?' <span class="tag tag--low">표본 부족</span>':'')+'</td><td>'+fmt(s.n)+'</td><td'+(o===bf?' class="is-hot"':'')+'>'+pct(s.fast,0)+'</td><td>'+pct(s.eng,0)+'</td><td>'+secs(s.dur)+'</td><td>'+pct(s.end,0)+'</td><td'+(o===bc?' class="best"':'')+'>'+pct(s.cta)+'</td></tr>';});
+  var t='<thead><tr><th class="l">캠페인</th><th>방문</th><th>빠른 이탈</th><th>참여율</th><th>평균 체류</th><th>다음 행동</th><th>CTA 클릭률</th></tr></thead><tbody>';
+  S.forEach(function(o){var s=o.s,low=s.n<LOW_N;t+='<tr'+(low?' class="is-low"':'')+'><td class="l"><b>'+esc(o.c.name)+'</b>'+(low?' <span class="tag tag--low">표본 부족</span>':'')+'</td><td>'+fmt(s.n)+'</td><td'+(o===bf?' class="is-hot"':'')+'>'+pct(s.fast,0)+'</td><td>'+pct(s.eng,0)+'</td><td>'+secs(s.dur)+'</td><td'+(o===be?' class="best"':'')+'>'+pct(s.act,0)+'</td><td'+(o===bc?' class="best"':'')+'>'+pct(s.cta)+'</td></tr>';});
   $("cmpTbl").innerHTML=t+'</tbody>';
 }
 function cs(v,k,b){return '<div><p class="cs__v'+(b?' is-best':'')+'">'+v+'</p><p class="cs__k">'+k+'</p></div>';}
@@ -582,22 +583,23 @@ function renderDetail(){
     ins("🏆","CTA 클릭률 최고 광고 채널",bc?bc.name:"판단 보류",bc?pct(bc.s.cta)+" · 방문 "+fmt(bc.s.n):"채널당 방문 "+LOW_N+"회 이상부터 비교해요")+
     ins("⚠️","빠른 이탈 최고 광고 채널",bf?bf.name:"판단 보류",bf?pct(bf.s.fast)+"가 "+FAST_SEC+"초 안에 이탈 → 소재 점검":"",true);
   $("dKpis").innerHTML=kpi(fmt(s.n),"회","방문")+kpi(pct(s.fast,0),"","빠른 이탈",FAST_SEC+"초 안에 이탈",s.fast>=0.15)+kpi(pct(s.eng,0),"","참여율",ENGAGED_SEC+"초 이상")+
-    kpi(pct(s.end,0),"","끝까지 도달","마지막 섹션까지")+kpi(pct(s.cta),"","CTA 클릭률",c.cta?lab(c,c.cta):"cta_key 미설정");
+    kpi(pct(s.act,0),"","다음 행동","상품 이동 "+fmt(s.outN)+" · 쇼룸 CTA "+fmt(s.ctaN)+"명")+kpi(pct(s.cta),"","CTA 클릭률",c.cta?lab(c,c.cta):"cta_key 미설정");
   var f=$("funnel"); f.innerHTML="";
   c.sections.forEach(function(sec,i){var v=s.reach[i],r=s.n?v/s.n:0,p=i?s.reach[i-1]:v,d=p?(p-v)/p:0,row=document.createElement("div");
-    row.className="fr"+(i===w.i?" is-drop":"");
+    row.className="fr"+(i===w.i-1?" is-drop":"");
     var last=i===c.sections.length-1, eo=last?0:s.exitOut[i], ep=last?0:s.exitPlain[i];   // 이 섹션까지 보고 멈춘 방문
-    row.innerHTML='<span class="fr__name">'+esc(sec[1])+'</span><span class="fr__track"><span class="fr__bar" style="width:'+r*100+'%"></span></span><span class="fr__val"><b>'+pct(r,0)+'</b>'+(i?'<span class="drop">−'+pct(d,0)+'</span>':'')+'</span>'+
-      (!last&&(eo+ep)?'<span class="fr__split"><span>여기서 멈춤 <b>'+fmt(eo+ep)+'명</b></span><span><i class="dot dot--out"></i>상품으로 이동 '+fmt(eo)+'</span><span><i class="dot dot--plain"></i>그냥 이탈 '+fmt(ep)+'</span></span>':'');
-    bindTip(row,'<b>'+esc(sec[1])+'</b><br>도달 '+fmt(v)+'회 ('+pct(r)+')'+(i?'<br>직전 섹션 대비 −'+pct(d,0):'')+(!last?'<br>이 섹션까지 보고 멈춘 방문 '+fmt(eo+ep)+'명<br>· 상품으로 이동 '+fmt(eo)+'명 (좋은 이탈)<br>· 그냥 이탈 '+fmt(ep)+'명':'')); f.appendChild(row);});
+    row.innerHTML='<span class="fr__name">'+esc(sec[1])+'</span><span class="fr__track"><span class="fr__bar" style="width:'+r*100+'%"></span></span><span class="fr__val"><b>'+pct(r,0)+'</b></span>'+
+      (last&&v?'<span class="fr__split"><span>끝까지 본 <b>'+fmt(v)+'명</b></span><span><i class="dot dot--out"></i>상품으로 이동 '+fmt(s.endOut)+'</span><span><i class="dot dot--cta"></i>쇼룸 CTA '+fmt(s.endCta)+'</span></span>':'')+
+      (!last&&(eo+ep)?'<span class="fr__split"><span>여기서 멈춤 <b>'+fmt(eo+ep)+'명</b></span><span><i class="dot dot--out"></i>상품으로 이동 '+fmt(eo)+'</span><span class="ex"><i class="dot dot--plain"></i>그냥 이탈 '+fmt(ep)+' <b>('+pct(v?ep/v:0,0)+')</b></span></span>':'');
+    bindTip(row,'<b>'+esc(sec[1])+'</b><br>도달 '+fmt(v)+'회 ('+pct(r)+')'+(!last?'<br>여기서 멈춘 방문 '+fmt(eo+ep)+'명<br>· 상품으로 이동 '+fmt(eo)+'명 (좋은 이탈)<br>· 그냥 이탈 '+fmt(ep)+'명 = 이 섹션을 본 사람의 '+pct(v?ep/v:0,0):'')); f.appendChild(row);});
   var noSec=s.n-(s.reach[0]||0);
   if(noSec>0){ var nt=el("p","note",""); nt.textContent="※ 첫 섹션 기록 없이 끝난 방문 "+fmt(noSec)+"명(페이지가 다 뜨기 전에 나간 경우 등)은 방문 수에는 포함되고 퍼널에서는 빠져 있어서, 맨 윗줄이 100%보다 조금 낮게 보여요."; f.appendChild(nt); }
   rank($("rank"),c,s,Object.keys(s.cN),10);
   renderStores($("storeTbl"),c,s);
-  var t='<thead><tr><th class="l">채널</th><th>방문</th><th>빠른 이탈</th><th>참여율</th><th>평균 체류</th><th>끝까지 도달</th><th>CTA 클릭률</th></tr></thead><tbody>';
+  var t='<thead><tr><th class="l">채널</th><th>방문</th><th>빠른 이탈</th><th>참여율</th><th>평균 체류</th><th>다음 행동</th><th>CTA 클릭률</th></tr></thead><tbody>';
   chS.forEach(function(o){var x=o.s,low=x.n<LOW_N;
     t+='<tr'+(low?' class="is-low"':'')+'><td class="l"><b>'+esc(o.name)+'</b>'+(low?' <span class="tag tag--low">표본 부족</span>':'')+'</td><td>'+fmt(x.n)+'</td>'+
-      '<td'+(!low&&bf&&bf.k===o.k?' class="is-hot"':'')+'>'+pct(x.fast,0)+'</td><td>'+pct(x.eng,0)+'</td><td>'+secs(x.dur)+'</td><td>'+pct(x.end,0)+'</td>'+
+      '<td'+(!low&&bf&&bf.k===o.k?' class="is-hot"':'')+'>'+pct(x.fast,0)+'</td><td>'+pct(x.eng,0)+'</td><td>'+secs(x.dur)+'</td><td>'+pct(x.act,0)+'</td>'+
       '<td'+(!low&&bc&&bc.k===o.k?' class="best"':'')+'>'+pct(x.cta)+'</td></tr>';
     // 채널 아래 지면별 줄 (지면이 2개 이상일 때)
     var cr=all.filter(function(r){return r.utm_source===o.k;}), mds={};
@@ -607,7 +609,7 @@ function renderDetail(){
       mk.map(function(m){return {m:m,s:sum(c,cr.filter(function(r){return r.utm_medium===m;}))};})
         .sort(function(a,b){return b.s.n-a.s.n;})
         .forEach(function(q){var y=q.s,lw=y.n<LOW_N;
-          t+='<tr class="is-sub'+(lw?' is-low':'')+'"><td class="l">'+esc(q.m?mdName(q.m):"(지면 없음)")+(lw?' <span class="tag tag--low">표본 부족</span>':'')+'</td><td>'+fmt(y.n)+'</td><td>'+pct(y.fast,0)+'</td><td>'+pct(y.eng,0)+'</td><td>'+secs(y.dur)+'</td><td>'+pct(y.end,0)+'</td><td>'+pct(y.cta)+'</td></tr>';});
+          t+='<tr class="is-sub'+(lw?' is-low':'')+'"><td class="l">'+esc(q.m?mdName(q.m):"(지면 없음)")+(lw?' <span class="tag tag--low">표본 부족</span>':'')+'</td><td>'+fmt(y.n)+'</td><td>'+pct(y.fast,0)+'</td><td>'+pct(y.eng,0)+'</td><td>'+secs(y.dur)+'</td><td>'+pct(y.act,0)+'</td><td>'+pct(y.cta)+'</td></tr>';});
     }
   });
   $("chTbl").innerHTML=t+'</tbody>';
@@ -673,24 +675,24 @@ function renderAds(){
     return o;});
   if(!list.length){ $("aIns").innerHTML=""; $("adTbl").innerHTML='<tbody><tr><td class="l">이 조건에 맞는 방문이 아직 없어요.</td></tr></tbody>'; return; }
   var ok=list.filter(function(o){return o.s.n>=LOW_N && !(G==="source"&&o.src==="");});
-  var bE=ok.slice().sort(function(a,b){return b.s.end-a.s.end;})[0], bC=ok.slice().sort(function(a,b){return b.s.cta-a.s.cta;})[0], bF=ok.slice().sort(function(a,b){return b.s.fast-a.s.fast;})[0];
+  var bE=ok.slice().sort(function(a,b){return b.s.act-a.s.act;})[0], bC=ok.slice().sort(function(a,b){return b.s.cta-a.s.cta;})[0], bF=ok.slice().sort(function(a,b){return b.s.fast-a.s.fast;})[0];
   $("aIns").innerHTML = ok.length>1 ?
     ins("🏆","CTA 클릭률 최고 "+WORD,bC.name,esc(bC.sub)+" · "+pct(bC.s.cta)+" · 방문 "+fmt(bC.s.n))+
-    ins("📜","끝까지 도달 최고 "+WORD,bE.name,esc(bE.sub)+" · "+pct(bE.s.end)+" → 페이지와 메시지가 맞아요")+
+    ins("👉","다음 행동 최고 "+WORD,bE.name,esc(bE.sub)+" · "+pct(bE.s.act)+" → 페이지와 메시지가 맞아요")+
     ins("⚠️","빠른 이탈 최고 "+WORD,bF.name,esc(bF.sub)+" · "+pct(bF.s.fast)+" 이탈 → 문구·이미지 점검",true)
     : ins("ℹ️","판단 보류","비교할 만큼 쌓인 "+WORD+({content:"가",medium:"이",source:"이",all:"이"}[G])+" 아직 부족해요",WORD+"당 방문 "+LOW_N+"회 이상인 것이 2개 이상일 때 비교해요");
   if(ok.length<2){ bE=bC=bF=null; }
   list.sort(function(a,b){var va=adSort.k==="name"?a.name:a.s[adSort.k],vb=adSort.k==="name"?b.name:b.s[adSort.k];
     var lowA=a.s.n<LOW_N,lowB=b.s.n<LOW_N; if(lowA!==lowB) return lowA?1:-1; return (va>vb?1:va<vb?-1:0)*adSort.dir;});
   var head={content:"소재",medium:"지면",source:"채널",all:"채널 · 지면 · 캠페인 · 소재"}[G];
-  var cols=[["name",head,"l"],["n","방문"],["fast","빠른 이탈"],["eng","참여율"],["dur","평균 체류"],["end","끝까지 도달"],["cta","CTA 클릭률"]];
+  var cols=[["name",head,"l"],["n","방문"],["fast","빠른 이탈"],["eng","참여율"],["dur","평균 체류"],["act","다음 행동"],["cta","CTA 클릭률"]];
   var t='<thead><tr>'+cols.map(function(x){return '<th class="'+(x[2]||"")+'" data-k="'+x[0]+'" style="cursor:pointer">'+x[1]+(adSort.k===x[0]?(adSort.dir<0?" ↓":" ↑"):"")+'</th>';}).join("")+'</tr></thead><tbody>';
   list.forEach(function(o){var x=o.s,low=x.n<LOW_N, th="";
     if(o.imgs){ var ims=o.imgs.filter(function(m){return m.t.length;});
       th=ims.length?'<span class="cres">'+ims.map(function(m){return '<a class="cre is-wait" target="_blank" rel="noopener" title="'+esc(m.title)+'" href="'+esc(m.t[0])+'" data-tries="'+esc(m.t.join("|"))+'"><img alt="" loading="lazy" src="'+esc(m.t[0])+'"></a>';}).join("")+'</span>':'<span class="cre cre--none"></span>'; }
     t+='<tr'+(low?' class="is-low"':'')+'><td class="l"><div class="adc">'+th+'<div><b>'+esc(o.name)+'</b>'+(low?' <span class="tag tag--low">표본 부족</span>':'')+'<span class="sub">'+esc(o.sub)+'</span></div></div></td>'+
       '<td>'+fmt(x.n)+'</td><td'+(!low&&o===bF?' class="is-hot"':'')+'>'+pct(x.fast,0)+'</td><td>'+pct(x.eng,0)+'</td><td>'+secs(x.dur)+'</td>'+
-      '<td'+(!low&&o===bE?' class="best"':'')+'>'+pct(x.end,0)+'</td><td'+(!low&&o===bC?' class="best"':'')+'>'+pct(x.cta)+'</td></tr>';});
+      '<td'+(!low&&o===bE?' class="best"':'')+'>'+pct(x.act,0)+'</td><td'+(!low&&o===bC?' class="best"':'')+'>'+pct(x.cta)+'</td></tr>';});
   $("adTbl").innerHTML=t+'</tbody>';
   // 이미지: 소재_채널_지면 → 소재_지면 → 소재 순서로 찾고(.jpg → .png). 한 줄에 같은 그림은 하나만, 없으면 빗금 칸
   function tidy(box){
