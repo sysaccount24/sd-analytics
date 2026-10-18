@@ -92,6 +92,7 @@
   .seg button[aria-pressed="true"]{background:var(--or-soft);color:var(--or-dark);font-weight:700;}
 
   /* KPI 카드 (CS웹: 큰 숫자 + 아래 라벨) */
+  .rank__more{display:block;width:100%;margin-top:10px;padding:9px 0;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink-2);font:inherit;font-size:12.5px;cursor:pointer;} .rank__more:hover{background:var(--or-soft);color:var(--or-dark);}
   .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;}
   @media (max-width:1100px){.kpis{grid-template-columns:repeat(2,1fr);}}
   .kpi{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 22px 18px;}
@@ -631,14 +632,18 @@ function renderDetail(){
   $("chTbl").innerHTML=t+'</tbody>';
 }
 
+var rankOpen={};   // 목록별 '전체 보기' 펼침 상태 (필터를 바꿔 다시 그려도 유지)
 function rank(box,c,s,keys,limit){
-  box.innerHTML=""; keys=keys.sort(function(a,b){return s.cN[b]-s.cN[a];}).slice(0,limit);
-  if(!keys.length){box.innerHTML='<p class="card__s">클릭 데이터가 아직 없어요.</p>';return;}
-  var max=s.cN[keys[0]];
-  keys.forEach(function(k,i){var d=dead(c,k),row=document.createElement("div");row.className="rr"+(d?" is-dead":"");
+  box.innerHTML=""; var all=keys.slice().sort(function(a,b){return s.cN[b]-s.cN[a];});
+  if(!all.length){box.innerHTML='<p class="card__s">클릭 데이터가 아직 없어요.</p>';return;}
+  var open=!!rankOpen[box.id], show=open?all:all.slice(0,limit), max=s.cN[all[0]];
+  show.forEach(function(k,i){var d=dead(c,k),row=document.createElement("div");row.className="rr"+(d?" is-dead":"");
     row.innerHTML='<span class="rr__no">'+(i+1)+'</span><span><span class="rr__label">'+esc(lab(c,k))+(d?'<span class="tag tag--dead">헛클릭</span>':'')+'</span><span class="rr__track"><span class="rr__bar" style="width:'+s.cN[k]/max*100+'%"></span></span></span>'+
       '<span class="rr__n">'+fmt(s.cN[k])+'</span><span class="rr__r">'+pct(s.n?s.cS[k]/s.n:0)+'</span>';
     bindTip(row,'<b>'+esc(lab(c,k))+'</b><br>클릭 '+fmt(s.cN[k])+'회 · 클릭한 방문 '+fmt(s.cS[k])+'회'+(d?'<br>링크가 없는 곳을 누름':'')); box.appendChild(row);});
+  if(all.length>limit){ var b=document.createElement("button"); b.type="button"; b.className="rank__more";
+    b.textContent=open?"접기":"전체 보기 ("+all.length+"개)";
+    b.onclick=function(){ rankOpen[box.id]=!open; rank(box,c,s,all,limit); }; box.appendChild(b); }
 }
 
 /* --- 쇼룸 매장별 관심 --- */
