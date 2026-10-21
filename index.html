@@ -179,6 +179,15 @@
   .tbl td.is-hot{color:var(--red);font-weight:700;}
   .tbl td.best{color:var(--or-dark);font-weight:700;}
   .tbl-wrap{overflow-x:auto;}
+  /* 채널별 일자 추이 */
+  .ts-tbl th.l,.ts-tbl td.l{position:sticky;left:0;z-index:1;background:#fff;min-width:130px;}
+  .ts-tbl th.l{background:#fafbfc;}
+  .ts-tbl tr.is-sub td.l{background:var(--line-2,#f6f7f9);}
+  .ts-tbl th .sub{font-weight:400;}
+  .ts-tbl td.ts-per{border-right:1px solid var(--line-2);font-weight:700;}
+  .ts-tbl td.ts-low{color:var(--ink-3);opacity:.6;}
+  .ts-tbl td.ts-0{color:#c5c8cf;}
+  .ts-tbl td .sub{font-weight:400;}
   .note{font-size:12px;color:var(--ink-3);margin-top:12px;line-height:1.6;}
 
   /* 캠페인 카드 */
@@ -310,6 +319,12 @@
       <div class="card__h"><p class="card__t">📡 채널별 성과</p><p class="card__s">빨강 = 빠른 이탈 높음 · 주황 = CTA 클릭률 최고</p></div>
       <div class="tbl-wrap"><table class="tbl" id="chTbl"></table></div>
       <p class="note">빠른 이탈 = 3초 안에 첫 화면만 보고 나간 사람. 높으면 광고 문구와 페이지가 안 맞거나 실수 클릭이 많다는 신호예요. 방문자 100명 미만은 <span class="tag tag--low">표본 부족</span>으로 흐리게 표시해요.</p>
+    </div>
+    <div class="card">
+      <div class="card__h"><p class="card__t">📅 채널별 일자 추이</p><p class="card__s" id="tsSub"></p>
+        <div class="seg seg--sm" id="fTs"><button data-v="act" aria-pressed="true">다음 행동</button><button data-v="fast" aria-pressed="false">빠른 이탈</button><button data-v="cta" aria-pressed="false">쇼룸 CTA</button><button data-v="n" aria-pressed="false">방문자</button></div></div>
+      <div class="tbl-wrap"><table class="tbl ts-tbl" id="tsTbl"></table></div>
+      <p class="note">날짜는 첫 접속 시각(한국 시간) 기준이에요. 칸 아래 작은 숫자 = 그날 방문자. 방문자 20명 미만인 날은 흐리게, 0명인 날은 –로 표시해요. 같은 사람이 여러 날 들어오면 날마다 1명씩 잡혀서, 일별 합계가 '기간 전체'보다 클 수 있어요.</p>
     </div>
   </section>
 
@@ -628,7 +643,7 @@ function renderDetail(){
   var c=camp(state.camp); if(!c) return;
   var rs=rows(c.id), s=sum(c,rs);
   $("pSub").textContent=c.name+" · "+label();
-  if(!s.n){ $("dIns").innerHTML=""; $("dKpis").innerHTML='<div class="state" style="grid-column:1/-1"><b>이 조건에 맞는 방문이 아직 없어요.</b><br>기간·채널·기기 필터를 넓혀보세요.</div>'; $("funnel").innerHTML=""; $("rank").innerHTML=""; $("chTbl").innerHTML=""; $("storeTbl").innerHTML=""; return; }
+  if(!s.n){ $("dIns").innerHTML=""; $("dKpis").innerHTML='<div class="state" style="grid-column:1/-1"><b>이 조건에 맞는 방문이 아직 없어요.</b><br>기간·채널·기기 필터를 넓혀보세요.</div>'; $("funnel").innerHTML=""; $("rank").innerHTML=""; $("chTbl").innerHTML=""; if($("tsTbl")) $("tsTbl").innerHTML=""; $("storeTbl").innerHTML=""; return; }
   var w={i:1,d:-1,all:0}; for(var i=1;i<s.reach.length;i++){var p=s.reach[i-1],d=p?s.exitPlain[i-1]/p:0; if(d>w.d)w={i:i,d:d,all:p?(p-s.reach[i])/p:0,out:s.exitOut[i-1],plain:s.exitPlain[i-1]};}
   // 채널 비교도 고른 채널끼리
   var all=rows(c.id,{ignoreCh:true}).filter(function(r){return chOk(r.utm_source);}), srcs={}; all.forEach(function(x){srcs[x.utm_source]=1;});
@@ -679,6 +694,42 @@ function renderDetail(){
     }
   });
   $("chTbl").innerHTML=t+'</tbody>';
+  renderTs(c,all,chS);
+}
+
+/* --- 채널별 일자 추이 (날짜를 가로로 펼친 시계열표) --- */
+var tsMetric="act", TS_LOW=20;
+var TS_SUB={ act:"상품으로 이동 또는 쇼룸 CTA를 누른 방문자 비율", fast:"3초 안에 첫 화면만 보고 나간 방문자 비율", cta:"쇼룸 CTA를 누른 방문자 비율", n:"그날 들어온 방문자 수(사람 기준)" };
+function dayKeys(){ var a=[], t=new Date(state.from+"T00:00:00+09:00").getTime(), k; for(var i=0;i<92;i++){ k=ymd(new Date(t+i*864e5)); a.push(k); if(k>=state.to) break; } return a; }
+function renderTs(c,all,chS){
+  var tbl=$("tsTbl"); if(!tbl) return;
+  $("tsSub").textContent=TS_SUB[tsMetric]||"";
+  var days=dayKeys(), WD=["일","월","화","수","목","금","토"];
+  function bucket(list){ var m={}; list.forEach(function(r){ var k=ymd(r.started_at); (m[k]=m[k]||[]).push(r); }); return m; }
+  function td(s,lowN,extra){
+    var cls=extra||"";
+    if(!s||!s.n) return '<td class="ts-0'+(cls?' '+cls:'')+'">–</td>';
+    if(tsMetric==="n") return '<td'+(cls?' class="'+cls+'"':'')+'>'+fmt(s.n)+'</td>';
+    var v=s[tsMetric], low=s.n<lowN;
+    if(tsMetric==="fast" && !low && v>=0.15) cls+=' is-hot';
+    if(low) cls+=' ts-low';
+    return '<td'+(cls.trim()?' class="'+cls.trim()+'"':'')+'>'+pct(v,tsMetric==="cta"?1:0)+'<span class="sub">'+fmt(s.n)+'명</span></td>';
+  }
+  function row(label,list,sub){
+    var bk=bucket(list), per=sum(c,list);
+    return '<tr'+(sub?' class="is-sub"':' class="ts-main"')+'><td class="l">'+(sub?label:'<b>'+label+'</b>')+'</td>'+td(per,LOW_N,'ts-per')+
+      days.map(function(d){ return td(bk[d]?sum(c,bk[d]):null,TS_LOW); }).join("")+'</tr>';
+  }
+  var h='<thead><tr><th class="l">채널</th><th>기간 전체</th>'+days.map(function(d){ return '<th>'+d.slice(5).replace("-","/")+'<span class="sub">'+WD[new Date(d+"T00:00:00Z").getUTCDay()]+'</span></th>'; }).join("")+'</tr></thead><tbody>';
+  h+=row("전체",all,false);
+  chS.forEach(function(o){
+    var cr=all.filter(function(r){return r.utm_source===o.k;});
+    h+=row(esc(o.name),cr,false);
+    var mds={}; cr.forEach(function(r){mds[r.utm_medium]=1;}); var mk=Object.keys(mds);
+    if(mk.length>1) mk.map(function(m){return {m:m,n:cr.filter(function(r){return r.utm_medium===m;}).length};}).sort(function(a,b){return b.n-a.n;})
+      .forEach(function(q){ h+=row(esc(q.m?mdName(q.m):"(지면 없음)"),cr.filter(function(r){return r.utm_medium===q.m;}),true); });
+  });
+  tbl.innerHTML=h+'</tbody>';
 }
 
 var rankOpen={}, retOpen=false;   // 목록별 '전체 보기' 펼침 상태 (필터를 바꿔 다시 그려도 유지)
@@ -865,7 +916,7 @@ document.addEventListener("click",function(e){ Object.keys(MS).forEach(function(
 $("fFrom").onchange=function(){state.from=this.value;load();};
 $("fTo").onchange=function(){state.to=this.value;load();};
 function seg(id,fn){ $(id).querySelectorAll("button").forEach(function(b){b.onclick=function(){$(id).querySelectorAll("button").forEach(function(x){x.setAttribute("aria-pressed","false");});b.setAttribute("aria-pressed","true");fn(b.dataset.v);render();};}); }
-seg("fDev",function(v){state.dev=v;}); seg("fGroup",function(v){state.adGroup=v;}); seg("fTest",function(v){state.test=v==="1";});
+seg("fDev",function(v){state.dev=v;}); seg("fGroup",function(v){state.adGroup=v;}); seg("fTest",function(v){state.test=v==="1";}); seg("fTs",function(v){tsMetric=v;});
 document.querySelectorAll(".nav__i").forEach(function(b){b.onclick=function(){go(b.dataset.screen);};});
 $("btnRefresh").onclick=function(){ load(true); };
 $("keyForm").onsubmit=function(e){ e.preventDefault(); var v=$("keyInput").value.trim(); if(!v) return; store("sd_read_key",v); $("keyErr").textContent=""; $("keyModal").hidden=true; load(true); };
